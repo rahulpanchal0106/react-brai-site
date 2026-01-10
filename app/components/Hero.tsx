@@ -171,7 +171,12 @@ export default function Hero({ onDocsClick }: { onDocsClick: () => void }) {
                 <h1 className="relative text-5xl sm:text-6xl md:text-8xl font-bold tracking-tighter text-center text-white mb-6 sm:mb-8">
                     {/* Background Animation - Using BraiLogo */}
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[120%] -z-10 pointer-events-none opacity-10">
-                        <motion.div animate={{ rotate: 360 }} transition={{ duration: 60, repeat: Infinity, ease: "linear" }} className="w-full h-full text-zinc-700 flex items-center justify-center">
+                        <motion.div
+                            animate={{ rotate: 360 }}
+                            transition={{ duration: 60, repeat: Infinity, ease: "linear" }}
+                            // CHANGE: Changed text-zinc-700 to text-white so it survives the opacity-10 filter
+                            className="w-full h-full text-white flex items-center justify-center"
+                        >
                             <BraiLogo className="w-48 h-48 sm:w-64 sm:h-64 md:w-96 md:h-96" />
                         </motion.div>
                     </div>
@@ -189,13 +194,7 @@ export default function Hero({ onDocsClick }: { onDocsClick: () => void }) {
 
                 {/* --- BUTTONS --- */}
                 <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-12 sm:mb-16 w-full justify-center items-center max-w-xs sm:max-w-none">
-                    <button
-                        onClick={onDocsClick}
-                        className="group px-4 py-2 sm:px-8 sm:py-3.5 bg-white text-black text-xs sm:text-base font-bold rounded-md sm:rounded-lg hover:bg-zinc-200 transition-all flex items-center justify-center gap-2 shadow-[0_0_30px_-5px_rgba(255,255,255,0.3)] w-[60%] sm:w-auto"
-                    >
-                        <BookOpen className="w-3 h-3 sm:w-4 sm:h-4 group-hover:scale-110 transition-transform" />
-                        Read Documentation
-                    </button>
+
 
                     <button
                         onClick={handleCopy}
@@ -206,6 +205,14 @@ export default function Hero({ onDocsClick }: { onDocsClick: () => void }) {
                         ) : (
                             <><Copy className="w-3 h-3 sm:w-4 sm:h-4 group-hover:text-white transition-colors" /><code>npm i react-brai</code></>
                         )}
+                    </button>
+
+                    <button
+                        onClick={onDocsClick}
+                        className="group px-4 py-2 sm:px-8 sm:py-3.5 bg-white text-black text-xs sm:text-base font-bold rounded-md sm:rounded-lg hover:bg-zinc-200 transition-all flex items-center justify-center gap-2 shadow-[0_0_30px_-5px_rgba(255,255,255,0.3)] w-[60%] sm:w-auto"
+                    >
+                        <BookOpen className="w-3 h-3 sm:w-4 sm:h-4 group-hover:scale-110 transition-transform" />
+                        Read Documentation
                     </button>
                 </div>
 
