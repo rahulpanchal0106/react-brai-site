@@ -206,38 +206,43 @@ export default function Hero({ onDocsClick }: { onDocsClick: () => void }) {
 
             {/* Sync Connector - Hidden on mobile */}
             {/* Sync Connector - With Real Hardware Detection */}
+            {/* Sync Connector - VISIBLE ON ALL SCREENS */}
             <motion.div
                 initial={{ opacity: 0, y: 50 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 1, duration: 0.8 }}
-                className="hidden sm:flex absolute bottom-8 z-20 flex-col items-center gap-3 group cursor-pointer"
+                // CHANGED: Removed 'hidden', added responsive positioning and scale
+                className="flex absolute bottom-4 sm:bottom-8 z-20 flex-col items-center gap-2 sm:gap-3 group cursor-pointer w-full px-4 sm:px-0"
                 onClick={onDocsClick}
             >
-                <div className="flex items-center gap-3 px-6 py-3 rounded-full border border-zinc-800 bg-black/80 backdrop-blur-md shadow-lg hover:border-zinc-600 transition-colors">
-                    <div className={`p-1.5 rounded bg-zinc-800 ${gpuStatus.state === "READY" ? "text-emerald-400" :
+                <div className="flex items-center gap-3 px-4 py-2 sm:px-6 sm:py-3 rounded-full border border-zinc-800 bg-black/80 backdrop-blur-md shadow-lg hover:border-zinc-600 transition-colors max-w-full">
+                    <div className={`p-1.5 rounded bg-zinc-800 flex-shrink-0 ${gpuStatus.state === "READY" ? "text-emerald-400" :
                         gpuStatus.state === "UNSUPPORTED" ? "text-rose-400" : "text-amber-400"
                         }`}>
-                        <Cpu className="w-4 h-4" />
+                        <Cpu className="w-3 h-3 sm:w-4 sm:h-4" />
                     </div>
-                    <div className="text-left">
-                        <p className="text-[10px] uppercase tracking-wider text-zinc-600 font-bold">Hardware Compatibility</p>
-                        <p className="text-sm font-medium text-zinc-300 group-hover:text-white flex items-center gap-2">
-                            {gpuStatus.name}
+
+                    <div className="text-left overflow-hidden">
+                        <p className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-600 font-bold truncate">Hardware Compatibility</p>
+                        <p className="text-xs sm:text-sm font-medium text-zinc-300 group-hover:text-white flex items-center gap-2 truncate">
+                            <span className="truncate">{gpuStatus.name}</span>
 
                             {/* Status Light Logic */}
                             {gpuStatus.state === "CHECKING" && (
-                                <span className="inline-block w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                                <span className="flex-shrink-0 inline-block w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-amber-500 animate-pulse" />
                             )}
                             {gpuStatus.state === "READY" && (
-                                <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                                <span className="flex-shrink-0 inline-block w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
                             )}
                             {gpuStatus.state === "UNSUPPORTED" && (
-                                <span className="inline-block w-2 h-2 rounded-full bg-rose-500" />
+                                <span className="flex-shrink-0 inline-block w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-rose-500" />
                             )}
                         </p>
                     </div>
                 </div>
-                <div className="w-[1px] h-8 bg-gradient-to-b from-zinc-800 to-transparent" />
+
+                {/* Vertical Line Connector (Only show on tablet+ to save vertical space on mobile) */}
+                <div className="hidden sm:block w-[1px] h-8 bg-gradient-to-b from-zinc-800 to-transparent" />
             </motion.div>
         </section>
     );
