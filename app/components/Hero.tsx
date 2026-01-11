@@ -1,7 +1,8 @@
 "use client";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { useRef, useState, useEffect } from "react";
-import { BookOpen, Database, Cpu, Box, Sparkles, Zap, BrainCircuit, FileJson, ShieldAlert, Search, Eraser, PenTool, Layers, LayoutTemplate, Copy, Check } from "lucide-react";
+import { BookOpen, Database, Cpu, Box, Sparkles, Zap, BrainCircuit, FileJson, ShieldAlert, Search, Eraser, PenTool, Layers, LayoutTemplate, Copy, Check, Play } from "lucide-react";
+import ZincTooltip from "./ZincToolTip";
 
 // --- TOP ROW: THE POWER (Models) ---
 const MODELS_SQUAD = [
@@ -22,29 +23,13 @@ const PROBLEM_SOLVERS = [
 ];
 
 // --- THE NEW LOGO COMPONENT ---
-const BraiLogo = ({ className = "w-8 h-8", color = "currentColor" }: { className?: string, color?: string }) => (
-    <svg viewBox="0 0 100 100" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
-        {/* 1. The React Orbit (Subtle Background) */}
-        <ellipse cx="50" cy="50" rx="45" ry="20" transform="rotate(-45 50 50)" stroke={color} strokeWidth="2" strokeOpacity="0.3" />
-
-        {/* 2. The Neural Connections (Main Shape) */}
-        <path
-            d="M50 20 L30 50 L50 80 L70 50 Z"
-            stroke={color}
-            strokeWidth="4"
-            strokeLinejoin="round"
-            className="drop-shadow-[0_0_8px_rgba(14,165,233,0.8)]"
-        />
-
-        {/* 3. The Core Nodes (Glowing Dots) */}
-        <circle cx="50" cy="20" r="6" fill={color} className="animate-pulse" />
-        <circle cx="30" cy="50" r="6" fill={color} />
-        <circle cx="70" cy="50" r="6" fill={color} />
-        <circle cx="50" cy="80" r="6" fill={color} />
-
-        {/* 4. Center Core (The 'Brain') */}
-        <circle cx="50" cy="50" r="10" fill={color} className="animate-[ping_3s_ease-in-out_infinite] opacity-20" />
-        <circle cx="50" cy="50" r="4" fill="white" />
+const BraiLogo = ({ className = "w-8 h-8", color = "#808485ff" }: { className?: string, color?: string }) => (
+    <svg viewBox="0 0 64 64" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
+        <g stroke={color} strokeWidth="3" strokeLinecap="round">
+            <ellipse cx="32" cy="32" rx="28" ry="11" transform="rotate(45 32 32)" />
+            <ellipse cx="32" cy="32" rx="28" ry="11" transform="rotate(135 32 32)" />
+            <path d="M4 32H60" />
+        </g>
     </svg>
 );
 
@@ -89,19 +74,14 @@ export default function Hero({ onDocsClick }: { onDocsClick: () => void }) {
                 setGpuStatus({ state: "UNSUPPORTED", name: "WebGPU Not Available" });
                 return;
             }
-
             try {
                 const adapter = await (navigator as any).gpu.requestAdapter();
                 if (!adapter) {
                     setGpuStatus({ state: "UNSUPPORTED", name: "No Graphics Adapter" });
                     return;
                 }
-
-                // Get Info
                 const info = (adapter).info || (await (adapter).requestAdapterInfo?.());
-
                 let gpuName = "High-Performance GPU";
-
                 if (info) {
                     if (info.device && info.device !== "") {
                         gpuName = info.device;
@@ -111,15 +91,12 @@ export default function Hero({ onDocsClick }: { onDocsClick: () => void }) {
                         gpuName = `${vendor} ${arch}`;
                     }
                 }
-
                 setGpuStatus({ state: "READY", name: gpuName });
-
             } catch (e) {
                 console.error(e);
                 setGpuStatus({ state: "UNSUPPORTED", name: "Hardware Error" });
             }
         };
-
         checkGPU();
     }, []);
 
@@ -136,6 +113,13 @@ export default function Hero({ onDocsClick }: { onDocsClick: () => void }) {
         setTimeout(() => setCopied(false), 2000);
     };
 
+    const handleScrollToPlayground = () => {
+        const element = document.getElementById("playground");
+        if (element) {
+            element.scrollIntoView({ behavior: "smooth" });
+        }
+    };
+
     return (
         <section ref={targetRef} className="relative min-h-[100dvh] w-full flex flex-col items-center justify-center overflow-hidden bg-black text-white selection:bg-zinc-500/30 py-20 sm:py-0">
             {/* 1. BACKGROUND LAYERS */}
@@ -149,18 +133,16 @@ export default function Hero({ onDocsClick }: { onDocsClick: () => void }) {
             {/* 2. MAIN CONTENT */}
             <motion.div style={{ scale, opacity }} className="relative z-20 w-full max-w-5xl px-4 sm:px-6 flex flex-col items-center">
 
-                {/* Badge: BRANDED with BraiLogo */}
+                {/* Badge */}
                 <a
                     href="https://www.npmjs.com/package/react-brai"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="group inline-flex items-center gap-3 px-4 py-1.5 rounded-full border border-zinc-800 bg-zinc-900/80 backdrop-blur-md text-xs font-mono text-zinc-400 mb-6 sm:mb-8 shadow-lg hover:border-zinc-600 hover:text-zinc-200 transition-colors cursor-pointer"
                 >
-                    <div className="text-sky-500 group-hover:scale-110 transition-transform duration-300">
-                        {/* THE NEW LOGO */}
-                        <BraiLogo className="w-5 h-5" />
+                    <div className="text-zinc-300 group-hover:scale-110 transition-transform duration-300">
+                        <BraiLogo className="w-5 h-5" color="currentColor" />
                     </div>
-
                     <span className="flex items-center gap-1.5">
                         <span className="font-bold text-white tracking-tight">react-brai</span>
                         <span className="w-1 h-1 rounded-full bg-zinc-600" />
@@ -169,13 +151,11 @@ export default function Hero({ onDocsClick }: { onDocsClick: () => void }) {
                 </a>
 
                 <h1 className="relative text-5xl sm:text-6xl md:text-8xl font-bold tracking-tighter text-center text-white mb-6 sm:mb-8">
-                    {/* Background Animation - Using BraiLogo */}
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[120%] -z-10 pointer-events-none opacity-10">
                         <motion.div
                             animate={{ rotate: 360 }}
                             transition={{ duration: 60, repeat: Infinity, ease: "linear" }}
-                            // CHANGE: Changed text-zinc-700 to text-white so it survives the opacity-10 filter
-                            className="w-full h-full text-white flex items-center justify-center"
+                            className="w-full h-full text-white flex items-center justify-center opacity-30"
                         >
                             <BraiLogo className="w-48 h-48 sm:w-64 sm:h-64 md:w-96 md:h-96" />
                         </motion.div>
@@ -183,36 +163,46 @@ export default function Hero({ onDocsClick }: { onDocsClick: () => void }) {
 
                     <span className="bg-clip-text text-transparent bg-gradient-to-b from-white via-zinc-200 to-zinc-600">The Runtime for</span>
                     <br />
-                    <span className="bg-clip-text text-transparent bg-gradient-to-b from-white via-zinc-500 to-zinc-900 drop-shadow-2xl">Local Intelligence.</span>
+                    <span className="bg-clip-text text-transparent bg-gradient-to-b from-white via-zinc-500 to-zinc-900 drop-shadow-2xl">Edge AI in React</span>
                 </h1>
 
                 <p className="text-base sm:text-lg md:text-xl text-zinc-500 text-center max-w-2xl mx-auto mb-10 sm:mb-12 leading-relaxed">
-                    Run privacy-first AI without the infrastructure overhead.
+                    Run privacy-first small AI without the infrastructure overhead.
                     <br className="hidden sm:block" />
                     <span className="text-zinc-300 font-medium block sm:inline mt-2 sm:mt-0">Zero Latency. Zero Cost. Easy To Use.</span>
                 </p>
 
-                {/* --- BUTTONS --- */}
-                <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-12 sm:mb-16 w-full justify-center items-center max-w-xs sm:max-w-none">
+                {/* --- BUTTONS (UPDATED FOR ZINC THEME) --- */}
+                <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-12 sm:mb-16 w-full justify-center items-center max-w-xs sm:max-w-none flex-wrap">
 
-
+                    {/* 1. PRIMARY: TRY DEMO (Zinc-100 / High Contrast) */}
                     <button
-                        onClick={handleCopy}
-                        className="group px-4 py-2 sm:px-8 sm:py-3.5 bg-zinc-950 border border-zinc-800 text-zinc-400 text-xs sm:text-base font-medium rounded-md sm:rounded-lg hover:bg-zinc-900 hover:text-white transition-all flex items-center justify-center gap-2 w-[60%] sm:w-auto sm:min-w-[180px]"
+                        onClick={handleScrollToPlayground}
+                        className="cursor-pointer group px-6 py-3 sm:px-8 sm:py-3.5 bg-zinc-100 text-zinc-950 text-sm sm:text-base font-bold rounded-md sm:rounded-lg hover:bg-white hover:scale-105 transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_-5px_rgba(255,255,255,0.3)] w-full sm:w-auto min-w-[160px]"
                     >
-                        {copied ? (
-                            <><Check className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-500" /><span className="text-emerald-500">Copied!</span></>
-                        ) : (
-                            <><Copy className="w-3 h-3 sm:w-4 sm:h-4 group-hover:text-white transition-colors" /><code>npm i react-brai</code></>
-                        )}
+                        <Play className="w-4 h-4 fill-zinc-950 group-hover:scale-110 transition-transform" />
+                        Try Demo
                     </button>
 
+                    {/* 2. SECONDARY: DOCS (Zinc-900 / Subtle) */}
                     <button
                         onClick={onDocsClick}
-                        className="group px-4 py-2 sm:px-8 sm:py-3.5 bg-white text-black text-xs sm:text-base font-bold rounded-md sm:rounded-lg hover:bg-zinc-200 transition-all flex items-center justify-center gap-2 shadow-[0_0_30px_-5px_rgba(255,255,255,0.3)] w-[60%] sm:w-auto"
+                        className="cursor-pointer group px-6 py-3 sm:px-8 sm:py-3.5 bg-zinc-900/50 text-zinc-200 border border-zinc-800 text-sm sm:text-base font-bold rounded-md sm:rounded-lg hover:bg-zinc-800 hover:text-white hover:border-zinc-700 transition-all flex items-center justify-center gap-2 shadow-sm w-full sm:w-auto min-w-[160px]"
                     >
-                        <BookOpen className="w-3 h-3 sm:w-4 sm:h-4 group-hover:scale-110 transition-transform" />
-                        Read Documentation
+                        <BookOpen className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                        Read Docs
+                    </button>
+
+                    {/* 3. TERTIARY: NPM COPY (Ghost / Utility) */}
+                    <button
+                        onClick={handleCopy}
+                        className="cursor-pointer group px-6 py-3 sm:px-8 sm:py-3.5 bg-black/50 border border-zinc-900 text-zinc-500 text-sm sm:text-base font-mono font-medium rounded-md sm:rounded-lg hover:border-zinc-700 hover:text-zinc-300 transition-all flex items-center justify-center gap-2 w-full sm:w-auto min-w-[160px]"
+                    >
+                        {copied ? (
+                            <><Check className="w-4 h-4 text-emerald-500" /><span className="text-emerald-500">Copied!</span></>
+                        ) : (
+                            <><Copy className="w-4 h-4" /><span>npm i react-brai</span></>
+                        )}
                     </button>
                 </div>
 
@@ -230,31 +220,29 @@ export default function Hero({ onDocsClick }: { onDocsClick: () => void }) {
                 className="flex absolute bottom-4 sm:bottom-8 z-20 flex-col items-center gap-2 sm:gap-3 group cursor-pointer w-full px-4 sm:px-0"
                 onClick={onDocsClick}
             >
-                <div className="flex items-center gap-3 px-4 py-2 sm:px-6 sm:py-3 rounded-full border border-zinc-800 bg-black/80 backdrop-blur-md shadow-lg hover:border-zinc-600 transition-colors max-w-full">
-                    <div className={`p-1.5 rounded bg-zinc-800 flex-shrink-0 ${gpuStatus.state === "READY" ? "text-emerald-400" :
-                        gpuStatus.state === "UNSUPPORTED" ? "text-rose-400" : "text-amber-400"
-                        }`}>
-                        <Cpu className="w-3 h-3 sm:w-4 sm:h-4" />
+                <ZincTooltip content="Check if your device is powerful enough for local AI.">
+                    <div className="flex items-center gap-3 px-4 py-2 sm:px-6 sm:py-3 rounded-full border border-zinc-800 bg-black/80 backdrop-blur-md shadow-lg hover:border-zinc-600 transition-colors max-w-full cursor-help">
+                        <div className={`p-1.5 rounded bg-zinc-800 flex-shrink-0 ${gpuStatus.state === "READY" ? "text-emerald-400" :
+                            gpuStatus.state === "UNSUPPORTED" ? "text-rose-400" : "text-amber-400"
+                            }`}>
+                            <Cpu className="w-3 h-3 sm:w-4 sm:h-4" />
+                        </div>
+
+                        <div className="text-left overflow-hidden">
+                            <p className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-600 font-bold truncate">
+                                {gpuStatus.state === "UNSUPPORTED" && "HARDWARE NOT COMPATIBLE"}
+                                {gpuStatus.state === "READY" && "HARDWARE COMPATIBLE"}
+                                {gpuStatus.state === "CHECKING" && "CHECKING HARDWARE..."}
+                            </p>
+                            <p className="text-xs sm:text-sm font-medium text-zinc-300 group-hover:text-white flex items-center gap-2 truncate">
+                                <span className="truncate">{gpuStatus.name}</span>
+                                {gpuStatus.state === "CHECKING" && <span className="flex-shrink-0 inline-block w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-amber-500 animate-pulse" />}
+                                {gpuStatus.state === "READY" && <span className="flex-shrink-0 inline-block w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />}
+                                {gpuStatus.state === "UNSUPPORTED" && <span className="flex-shrink-0 inline-block w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-rose-500" />}
+                            </p>
+                        </div>
                     </div>
-
-                    <div className="text-left overflow-hidden">
-                        <p className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-600 font-bold truncate">Hardware Compatibility</p>
-                        <p className="text-xs sm:text-sm font-medium text-zinc-300 group-hover:text-white flex items-center gap-2 truncate">
-                            <span className="truncate">{gpuStatus.name}</span>
-
-                            {gpuStatus.state === "CHECKING" && (
-                                <span className="flex-shrink-0 inline-block w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-amber-500 animate-pulse" />
-                            )}
-                            {gpuStatus.state === "READY" && (
-                                <span className="flex-shrink-0 inline-block w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                            )}
-                            {gpuStatus.state === "UNSUPPORTED" && (
-                                <span className="flex-shrink-0 inline-block w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-rose-500" />
-                            )}
-                        </p>
-                    </div>
-                </div>
-
+                </ZincTooltip>
                 <div className="hidden sm:block w-[1px] h-8 bg-gradient-to-b from-zinc-800 to-transparent" />
             </motion.div>
         </section>

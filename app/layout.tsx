@@ -15,18 +15,18 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   metadataBase: new URL("https://react-brai.vercel.app"), // REPLACE with your domain
   title: {
-    default: "React Brai | Local AI Runtime for the Web",
+    default: "React Brai | Edge AI Runtime for the Web",
     template: "%s | React Brai",
   },
   description: "The zero-latency WebGPU runtime for React. Run Llama-3, Phi-3, and Gemma directly in the browser with privacy-first local inference.",
   keywords: [
     "WebGPU", "Local LLM", "React Hook", "AI Runtime",
     "Llama 3", "Browser AI", "Edge Computing", "Privacy Preserving AI",
-    "react-brai", "useLocalAI"
+    "react-brai", "useLocalAI", "Edge AI"
   ],
-  authors: [{ name: "Your Name" }],
-  creator: "Your Name",
-  publisher: "Your Organization",
+  authors: [{ name: "Rauhl panchal" }],
+  creator: "Rahul Panchal",
+  publisher: "Rahul Panchal",
   robots: {
     index: true,
     follow: true,
@@ -42,7 +42,7 @@ export const metadata: Metadata = {
     type: "website",
     locale: "en_US",
     url: "https://react-brai.vercel.app",
-    title: "React Brai - Local Intelligence",
+    title: "React Brai - Edge AI Interface",
     description: "Run privacy-first AI without the infrastructure overhead.",
     siteName: "React Brai",
     images: [
@@ -74,6 +74,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
+
       <body className={`${inter.className} bg-black text-white antialiased`}>
         {/* Inject Structured Data for SEO */}
         <JsonLd />

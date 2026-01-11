@@ -3,6 +3,8 @@ import Hero from "./components/Hero";
 import Docs from "./components/Docs";       // The new "Classified Manual" component
 import Refinery from "./components/UIRefine"; // Your existing "Live Demo"
 import Playground from "./components/Playground";
+import Footer from "./components/Footer";
+import Features from "./components/Features";
 
 export default function Home() {
 
@@ -22,6 +24,8 @@ export default function Home() {
       */}
       <Hero onDocsClick={handleScrollToDocs} />
 
+      <Features />
+
       {/* 2. DOCUMENTATION SECTION 
           - The "Classified Manual" we just built
           - Has the id="docs-section" for the scroll target
@@ -34,10 +38,13 @@ export default function Home() {
           - Kept as the final section for users who want to try it after reading
           - Added a separator line
       */}
-      <section id="refinery-section" className="relative z-10 border-t border-zinc-900 bg-black pt-20 pb-20">
-        <Playground />
-        {/* <Refinery /> */}
-      </section>
+      {/* <section id="refinery-section" className="relative z-10 border-t border-zinc-900 bg-black pt-20"> */}
+      {/* <Refinery /> */}
+      {/* </section> */}
+      <Playground />
+
+
+      <Footer />
 
     </main>
   );

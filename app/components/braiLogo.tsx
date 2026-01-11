@@ -1,33 +1,15 @@
 import React from "react";
 
-export const BraiLogo = ({ className = "w-8 h-8", color = "currentColor" }: { className?: string, color?: string }) => {
+export const BraiLogo = ({ width = 46, height = 64, color = "currentColor" }: { width?: number, height?: number, className?: string, color?: string }) => {
     return (
-        <svg viewBox="0 0 100 100" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
-            {/* 1. The React Orbit (Subtle Background) */}
-            <ellipse cx="50" cy="50" rx="45" ry="20" transform="rotate(-45 50 50)" stroke={color} strokeWidth="2" strokeOpacity="0.3" />
+        <svg width={width} height={height} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <g stroke="#0ea5e9" stroke-width="3" stroke-linecap="round">
+                <ellipse cx="32" cy="32" rx="28" ry="11" transform="rotate(45 32 32)" />
 
-            {/* 2. The Neural Connections (Main Shape) */}
-            <path
-                d="M50 20 L30 50 L50 80 L70 50 Z"
-                stroke={color}
-                strokeWidth="4"
-                strokeLinejoin="round"
-                className="drop-shadow-[0_0_8px_rgba(14,165,233,0.8)]"
-            />
+                <ellipse cx="32" cy="32" rx="28" ry="11" transform="rotate(135 32 32)" />
 
-            {/* 3. The Core Nodes (Glowing Dots) */}
-            {/* Top */}
-            <circle cx="50" cy="20" r="6" fill={color} className="animate-pulse" />
-            {/* Left */}
-            <circle cx="30" cy="50" r="6" fill={color} />
-            {/* Right */}
-            <circle cx="70" cy="50" r="6" fill={color} />
-            {/* Bottom */}
-            <circle cx="50" cy="80" r="6" fill={color} />
-
-            {/* 4. Center Core (The 'Brain') */}
-            <circle cx="50" cy="50" r="10" fill={color} className="animate-[ping_3s_ease-in-out_infinite] opacity-20" />
-            <circle cx="50" cy="50" r="4" fill="white" />
+                <path d="M4 32H60" />
+            </g>
         </svg>
     );
 };
