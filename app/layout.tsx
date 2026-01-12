@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google"; // Optional: If you use a font
 import "./globals.css"; // <--- THIS WAS MISSING
 import JsonLd from "./components/jsonLD";
+import { Analytics } from "@vercel/analytics/next"
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -80,6 +81,7 @@ export default function RootLayout({
         <JsonLd />
 
         {children}
+        <Analytics />
       </body>
     </html>
   );
