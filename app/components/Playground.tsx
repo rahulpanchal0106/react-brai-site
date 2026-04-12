@@ -740,9 +740,9 @@ const ChatApp = ({ chat, isLoading, streamBuffer }: any) => {
         }
     }, [isLoading, activeStream]);
 
-    useEffect(() => {
-        if (scrollRef.current) scrollRef.current.scrollIntoView({ behavior: "smooth" });
-    }, [messages, activeStream, isLoading]);
+    // useEffect(() => {
+    //     if (scrollRef.current) scrollRef.current.scrollIntoView({ behavior: "smooth" });
+    // }, [messages, activeStream, isLoading]);
 
     const handleSend = async () => {
         if (!input.trim() || isLoading) return;
