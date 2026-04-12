@@ -30,8 +30,9 @@ const BulkApp = ({ chat, isLoading, streamBuffer }: any) => {
     const [isProcessing, setIsProcessing] = useState(false);
     const [progress, setProgress] = useState({ current: 0, total: 0 });
     
-    // NEW: Persistence States
+    // Persistence & Sorting States
     const [isMounted, setIsMounted] = useState(false);
+    const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("oldest");
     const STORAGE_KEY = "react-brai-bulk-results";
 
     const latestResponse = useRef("");
@@ -44,7 +45,6 @@ const BulkApp = ({ chat, isLoading, streamBuffer }: any) => {
         isLoadingRef.current = isLoading;
     }, [isLoading]);
 
-    // NEW: Load saved results on mount
     useEffect(() => {
         setIsMounted(true);
         const saved = localStorage.getItem(STORAGE_KEY);
@@ -57,12 +57,19 @@ const BulkApp = ({ chat, isLoading, streamBuffer }: any) => {
         }
     }, []);
 
-    // NEW: Auto-save results whenever the array updates
     useEffect(() => {
         if (isMounted) {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(results));
         }
     }, [results, isMounted]);
+
+    const targetSchemaPreview = {
+        "intent": "string (Core topic of the text)",
+        "tone": "Enum: [Empathetic, Professional, Apologetic, Frustrated]",
+        "resolution_provided": "boolean",
+        "required_user_action": "string (What the user must do next)",
+        "policies_mentioned": "array of strings (Specific rules cited)"
+    };
 
     const getPrompt = (text: string) => [
         { 
@@ -100,7 +107,6 @@ const BulkApp = ({ chat, isLoading, streamBuffer }: any) => {
     const startBulkProcess = async () => {
         if (!csvData.length || !selectedColumn || isProcessing) return;
         setIsProcessing(true);
-        // We append to existing results so you can run multiple CSVs into the same database!
         setProgress({ current: 0, total: csvData.length });
 
         for (let i = 0; i < csvData.length; i++) {
@@ -129,7 +135,7 @@ const BulkApp = ({ chat, isLoading, streamBuffer }: any) => {
                 }
 
                 setResults(prev => [...prev, {
-                    id: prev.length + 1, // Fix ID so it increments properly if appending
+                    id: prev.length + 1,
                     original: rawText,
                     status: parsedJson ? "Processed" : "Failed",
                     data: parsedJson
@@ -145,7 +151,6 @@ const BulkApp = ({ chat, isLoading, streamBuffer }: any) => {
         setIsProcessing(false);
     };
 
-    // NEW: Clear function
     const handleClearHistory = () => {
         localStorage.removeItem(STORAGE_KEY);
         setResults([]);
@@ -155,21 +160,33 @@ const BulkApp = ({ chat, isLoading, streamBuffer }: any) => {
 
     if (!isMounted) return null;
 
+    const displayedResults = sortOrder === "newest" ? [...results].reverse() : results;
+
     return (
         <div className="p-6 h-full flex flex-col bg-[#050505]">
             <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-zinc-800 pb-4">
                 <div className="flex items-center gap-3">
                     <h3 className="text-white font-bold flex items-center gap-2">
                         <Database className="w-5 h-5 text-sky-500" />
-                        Offline Bulk Processing
+                        Bulk Customer Support Analyzer
                     </h3>
                     <span className="text-[10px] font-mono bg-zinc-900 text-zinc-400 px-2 py-0.5 rounded-full border border-zinc-800">
                         {results.length} Records
                     </span>
+                    
+                    {results.length > 0 && (
+                        <button 
+                            onClick={() => setSortOrder(prev => prev === "newest" ? "oldest" : "newest")}
+                            className="text-[10px] font-mono bg-zinc-900 hover:bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-full border border-zinc-800 transition-colors flex items-center gap-1 cursor-pointer select-none"
+                            title="Toggle reading direction"
+                        >
+                            <ListOrdered className="w-3 h-3" />
+                            {sortOrder === "newest" ? "Newest First" : "Oldest First"}
+                        </button>
+                    )}
                 </div>
                 
                 <div className="flex items-center gap-3">
-                    {/* NEW: Clear History Button */}
                     {results.length > 0 && !isProcessing && (
                         <button 
                             onClick={handleClearHistory} 
@@ -214,14 +231,60 @@ const BulkApp = ({ chat, isLoading, streamBuffer }: any) => {
 
             <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-800 pr-2 pb-12">
                 {results.length === 0 && !isProcessing ? (
-                    <div className="h-full flex flex-col items-center justify-center text-zinc-600 text-sm">
-                        <ListOrdered className="w-8 h-8 mb-3 opacity-20" />
-                        Upload a CSV and select the target text column to begin batch extraction.
+                    // ==========================================
+                    // THE NEW ONBOARDING EMPTY STATE
+                    // ==========================================
+                    <div className="h-full flex flex-col items-center justify-center text-sm max-w-4xl mx-auto w-full px-4 pt-8 pb-12">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
+                            
+                            {/* Left Column: Instructions & Dataset */}
+                            <div className="flex flex-col gap-4">
+                                <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-6 h-full flex flex-col">
+                                    <h4 className="text-white font-bold mb-3 flex items-center gap-2 text-lg">
+                                        <ListOrdered className="w-5 h-5 text-sky-500" /> Pipeline Overview
+                                    </h4>
+                                    <p className="text-zinc-400 text-sm leading-relaxed mb-6">
+                                        Upload a CSV file containing unstructured support logs. Select your target column, and the local WebGPU engine will sequentially process each row, strictly formatting the chaotic text into clean, structured JSON data.
+                                    </p>
+                                    
+                                    <div className="bg-sky-500/10 border border-sky-500/20 p-5 rounded-xl flex flex-col gap-3 mt-auto">
+                                        <span className="text-sky-400 font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
+                                            <Sparkles className="w-4 h-4" /> Demo Dataset
+                                        </span>
+                                        <p className="text-sm text-zinc-300 leading-relaxed">
+                                            To test this pipeline, download the official <a href="https://huggingface.co/datasets/bitext/Bitext-customer-support-llm-chatbot-training-dataset/blob/main/Bitext_Sample_Customer_Support_Training_Dataset_27K_responses-v11.csv" target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:text-sky-300 hover:underline transition-colors font-bold">Bitext Customer Support Dataset</a> from HuggingFace. 
+                                        </p>
+                                        <div className="bg-black/50 p-3 rounded-lg border border-sky-500/10 text-xs text-zinc-400 font-mono mt-1">
+                                            1. Upload the CSV.<br/>
+                                            2. Set Target to: <span className="text-emerald-400 font-bold">response</span><br/>
+                                            3. Click Start Batch.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Right Column: Schema Preview */}
+                            <div className="flex flex-col gap-4">
+                                <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-6 h-full flex flex-col">
+                                    <h4 className="text-white font-bold mb-3 flex items-center gap-2 text-lg">
+                                        <FileJson className="w-5 h-5 text-emerald-500" /> Target Schema
+                                    </h4>
+                                    <p className="text-zinc-400 text-sm leading-relaxed mb-4">
+                                        The zero-shot prompt forces the edge model to format every row into this exact JSON structure:
+                                    </p>
+                                    <div className="flex-1 bg-[#0a0a0a] border border-zinc-800/80 rounded-xl p-5 font-mono text-xs text-emerald-400/90 overflow-auto shadow-inner relative">
+                                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500/0 via-emerald-500/20 to-emerald-500/0"></div>
+                                        <pre className="leading-loose">{JSON.stringify(targetSchemaPreview, null, 2)}</pre>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
                     </div>
+                    // ==========================================
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start">
-                        {/* We use slice().reverse() so the newest extractions show up at the top! */}
-                        {results.slice().map((item, idx) => (
+                        {displayedResults.map((item, idx) => (
                             <div key={item.id} className={`bg-zinc-900/40 border rounded-xl p-4 flex flex-col gap-3 relative overflow-hidden ${item.status === "Processed" ? "border-zinc-800" : "border-red-900/30"}`}>
                                 {item.status === "Processed" && <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500/50"></div>}
                                 {item.status === "Failed" && <div className="absolute top-0 left-0 w-1 h-full bg-red-500/50"></div>}
@@ -298,9 +361,6 @@ const BulkApp = ({ chat, isLoading, streamBuffer }: any) => {
         </div>
     );
 };
-
-"I gather that you're unable to make the payment for your recent purchase and would like to cancel it. I apologize for any inconvenience this may have caused. To assist you in canceling the purchase and resolving this issue, please follow the steps below: 1. Log into your {{Online Company Portal Info}} using your credentials. 2. Locate the '{{Online Order Interaction}}' or '{{Online Order Interaction}}' section, and navigate to the specific purchase you would like to cancel. 3. Select the option labeled '{{Online Order Interaction}}' associated with your purchase. 4. Take note that there may be additional instructions or questions prompted by the system, and your cooperation in providing the necessary information is greatly appreciated. If you encounter any difficulties or have further questions, our dedicated support team is available to assist you during {{Customer Support Hours}}. You can reach us via {{Customer Support Phone Number}} or through the Live Chat feature on our website at {{Website URL}}. Rest assured that we are committed to resolving this issue and ensuring your satisfaction."
-
 // ============================================================================
 // 1. HELPER COMPONENTS
 // ============================================================================
