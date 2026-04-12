@@ -6,7 +6,8 @@ import {
     RefreshCw, Eraser, FileJson, MessageSquare, Loader2, Play, Copy,
     Trash2, Box, BrainCircuit, Sparkles, Zap, ChevronRight, Activity,
     RotateCcw, ListOrdered, Share2, Server, Clock,
-    Search
+    Search, PanelLeftClose, PanelLeftOpen, Maximize2, Minimize2, EyeOff, Eye,
+    File
 } from "lucide-react";
 import { useLocalAI } from "react-brai";
 import ReactMarkdown from 'react-markdown';
@@ -15,6 +16,290 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import remarkGfm from 'remark-gfm';
 import ZincTooltip from "./ZincToolTip";
 import { BraiLogo } from "./braiLogo";
+
+// ============================================================================
+// SUB-APP: BULK CSV PROCESSOR
+// ============================================================================
+import Papa from 'papaparse';
+
+const BulkApp = ({ chat, isLoading, streamBuffer }: any) => {
+    const [csvData, setCsvData] = useState<any[]>([]);
+    const [columns, setColumns] = useState<string[]>([]);
+    const [selectedColumn, setSelectedColumn] = useState("");
+    const [results, setResults] = useState<any[]>([]);
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [progress, setProgress] = useState({ current: 0, total: 0 });
+    
+    // NEW: Persistence States
+    const [isMounted, setIsMounted] = useState(false);
+    const STORAGE_KEY = "react-brai-bulk-results";
+
+    const latestResponse = useRef("");
+    useEffect(() => { 
+        if (streamBuffer) latestResponse.current = streamBuffer; 
+    }, [streamBuffer]);
+
+    const isLoadingRef = useRef(isLoading);
+    useEffect(() => {
+        isLoadingRef.current = isLoading;
+    }, [isLoading]);
+
+    // NEW: Load saved results on mount
+    useEffect(() => {
+        setIsMounted(true);
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+            try {
+                setResults(JSON.parse(saved));
+            } catch (e) {
+                console.error("Failed to parse saved bulk data");
+            }
+        }
+    }, []);
+
+    // NEW: Auto-save results whenever the array updates
+    useEffect(() => {
+        if (isMounted) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(results));
+        }
+    }, [results, isMounted]);
+
+    const getPrompt = (text: string) => [
+        { 
+            role: "system", 
+            content: "You are a strict customer support log analyzer. Extract the data into JSON. Output ONLY valid JSON. Do not add any conversational text. Use null if a piece of data is missing. The keys must be exactly: intent, tone, resolution_provided, required_user_action, policies_mentioned." 
+        },
+        {
+            role: "user",
+            content: "Text: I am so sorry your package was delayed. We have issued a full refund. Please print the return label attached and drop the broken item at USPS."
+        },
+        {
+            role: "assistant",
+            content: "{\n  \"intent\": \"item_return_and_refund\",\n  \"tone\": \"Apologetic\",\n  \"resolution_provided\": true,\n  \"required_user_action\": \"Print return label and drop at USPS\",\n  \"policies_mentioned\": []\n}"
+        },
+        { role: "user", content: `Text: ${text}` }
+    ];
+
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        Papa.parse(file, {
+            header: true,
+            skipEmptyLines: true,
+            complete: (result) => {
+                setCsvData(result.data);
+                if (result.meta.fields) {
+                    setColumns(result.meta.fields);
+                    setSelectedColumn(result.meta.fields[0]);
+                }
+            }
+        });
+    };
+
+    const startBulkProcess = async () => {
+        if (!csvData.length || !selectedColumn || isProcessing) return;
+        setIsProcessing(true);
+        // We append to existing results so you can run multiple CSVs into the same database!
+        setProgress({ current: 0, total: csvData.length });
+
+        for (let i = 0; i < csvData.length; i++) {
+            const rawText = csvData[i][selectedColumn];
+            if (!rawText) continue;
+
+            try {
+                latestResponse.current = ""; 
+                await chat(getPrompt(rawText)); 
+                await new Promise(resolve => setTimeout(resolve, 200));
+                
+                while (isLoadingRef.current) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+                
+                const rawOutput = latestResponse.current;
+                let parsedJson = null;
+                try {
+                    const startIdx = rawOutput.indexOf('{');
+                    const endIdx = rawOutput.lastIndexOf('}');
+                    if (startIdx !== -1 && endIdx !== -1) {
+                        parsedJson = JSON.parse(rawOutput.substring(startIdx, endIdx + 1));
+                    }
+                } catch (e) {
+                    console.error("JSON parse failed on row", i, rawOutput);
+                }
+
+                setResults(prev => [...prev, {
+                    id: prev.length + 1, // Fix ID so it increments properly if appending
+                    original: rawText,
+                    status: parsedJson ? "Processed" : "Failed",
+                    data: parsedJson
+                }]);
+                
+            } catch (err) {
+                console.error("Inference failed on row", i);
+            }
+
+            setProgress(prev => ({ ...prev, current: i + 1 }));
+            await new Promise(resolve => setTimeout(resolve, 50)); 
+        }
+        setIsProcessing(false);
+    };
+
+    // NEW: Clear function
+    const handleClearHistory = () => {
+        localStorage.removeItem(STORAGE_KEY);
+        setResults([]);
+        setCsvData([]);
+        setProgress({ current: 0, total: 0 });
+    };
+
+    if (!isMounted) return null;
+
+    return (
+        <div className="p-6 h-full flex flex-col bg-[#050505]">
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-zinc-800 pb-4">
+                <div className="flex items-center gap-3">
+                    <h3 className="text-white font-bold flex items-center gap-2">
+                        <Database className="w-5 h-5 text-sky-500" />
+                        Offline Bulk Processing
+                    </h3>
+                    <span className="text-[10px] font-mono bg-zinc-900 text-zinc-400 px-2 py-0.5 rounded-full border border-zinc-800">
+                        {results.length} Records
+                    </span>
+                </div>
+                
+                <div className="flex items-center gap-3">
+                    {/* NEW: Clear History Button */}
+                    {results.length > 0 && !isProcessing && (
+                        <button 
+                            onClick={handleClearHistory} 
+                            className="p-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg border border-red-500/20 transition-colors" 
+                            title="Nuke Local Database"
+                        >
+                            <Trash2 className="w-4 h-4" />
+                        </button>
+                    )}
+
+                    <label className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 px-4 py-2 rounded-lg text-xs font-bold cursor-pointer transition-colors">
+                        Upload CSV
+                        <input type="file" accept=".csv" onChange={handleFileUpload} className="hidden" />
+                    </label>
+                    
+                    {columns.length > 0 && (
+                        <select 
+                            value={selectedColumn} 
+                            onChange={(e) => setSelectedColumn(e.target.value)}
+                            className="bg-black border border-zinc-700 text-zinc-300 text-xs rounded-lg px-3 py-2 outline-none focus:border-sky-500 max-w-[150px] truncate"
+                        >
+                            {columns.map(col => <option key={col} value={col}>Target: {col}</option>)}
+                        </select>
+                    )}
+
+                    <button 
+                        onClick={startBulkProcess}
+                        disabled={isProcessing || !csvData.length}
+                        className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white px-6 py-2 rounded-lg font-bold text-xs transition-all shadow-lg shadow-emerald-500/20"
+                    >
+                        {isProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3 fill-current" />}
+                        {isProcessing ? `Processing ${progress.current}/${progress.total}` : "Start Batch"}
+                    </button>
+                </div>
+            </div>
+
+            {isProcessing && (
+                <div className="mb-6 w-full bg-zinc-900 rounded-full h-1.5 border border-zinc-800 overflow-hidden">
+                    <div className="bg-emerald-500 h-1.5 transition-all duration-300" style={{ width: `${(progress.current / progress.total) * 100}%` }}></div>
+                </div>
+            )}
+
+            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-800 pr-2 pb-12">
+                {results.length === 0 && !isProcessing ? (
+                    <div className="h-full flex flex-col items-center justify-center text-zinc-600 text-sm">
+                        <ListOrdered className="w-8 h-8 mb-3 opacity-20" />
+                        Upload a CSV and select the target text column to begin batch extraction.
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start">
+                        {/* We use slice().reverse() so the newest extractions show up at the top! */}
+                        {results.slice().reverse().map((item, idx) => (
+                            <div key={item.id} className={`bg-zinc-900/40 border rounded-xl p-4 flex flex-col gap-3 relative overflow-hidden ${item.status === "Processed" ? "border-zinc-800" : "border-red-900/30"}`}>
+                                {item.status === "Processed" && <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500/50"></div>}
+                                {item.status === "Failed" && <div className="absolute top-0 left-0 w-1 h-full bg-red-500/50"></div>}
+                                
+                                <div className="flex justify-between items-start mb-1">
+                                    <span className="text-[10px] font-mono text-zinc-500 uppercase">Row {item.id}</span>
+                                    {item.status === "Processed" ? (
+                                        <span className="text-[10px] font-bold text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded border border-emerald-400/20 flex items-center gap-1">
+                                            <CheckCircle2 className="w-3 h-3" /> Extracted
+                                        </span>
+                                    ) : (
+                                        <span className="text-[10px] font-bold text-red-400 bg-red-400/10 px-2 py-0.5 rounded border border-red-400/20 flex items-center gap-1">
+                                            <AlertTriangle className="w-3 h-3" /> Error
+                                        </span>
+                                    )}
+                                </div>
+                                
+                                <details className="group/text mb-1">
+                                    <summary className="text-xs text-zinc-400 italic cursor-pointer outline-none hover:text-zinc-300 flex items-start gap-1.5 select-none list-none [&::-webkit-details-marker]:hidden">
+                                        <ChevronRight className="w-3 h-3 mt-0.5 group-open/text:rotate-90 transition-transform shrink-0 opacity-50 group-hover/text:opacity-100" />
+                                        <span className="line-clamp-2 group-open/text:line-clamp-none leading-relaxed transition-all">
+                                            "{item.original}"
+                                        </span>
+                                    </summary>
+                                </details>
+                                
+                                <div className="mt-auto pt-3 border-t border-zinc-800/50 flex flex-col gap-3">
+                                    {item.data ? (
+                                        <>
+                                            <div className="flex gap-2 flex-wrap">
+                                                <span className="bg-black border border-zinc-800 px-2 py-1 rounded text-[10px] text-zinc-300 font-mono flex items-center gap-1">
+                                                    Intent: <span className="text-sky-400 font-bold max-w-[80px] truncate" title={item.data.intent}>{item.data.intent || "null"}</span>
+                                                </span>
+                                                <span className="bg-black border border-zinc-800 px-2 py-1 rounded text-[10px] text-zinc-300 font-mono flex items-center gap-1">
+                                                    Tone: <span className="text-amber-400 font-bold truncate max-w-[60px]" title={item.data.tone}>{item.data.tone || "null"}</span>
+                                                </span>
+                                                <span className="bg-black border border-zinc-800 px-2 py-1 rounded text-[10px] text-zinc-300 font-mono flex items-center gap-1">
+                                                    Resolved: <span className={`font-bold ${item.data.resolution_provided ? 'text-emerald-400' : 'text-red-400'}`}>{item.data.resolution_provided ? 'Yes' : 'No'}</span>
+                                                </span>
+                                            </div>
+
+                                            <details className="group">
+                                                <summary className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider cursor-pointer hover:text-zinc-300 transition-colors flex items-center gap-1 select-none outline-none list-none [&::-webkit-details-marker]:hidden">
+                                                    <ChevronRight className="w-3 h-3 group-open:rotate-90 transition-transform" />
+                                                    View Extraction Details
+                                                </summary>
+                                                <div className="pt-3 flex flex-col gap-2">
+                                                    <div className="bg-black/50 border border-zinc-800/50 rounded p-2">
+                                                        <span className="text-[9px] text-zinc-500 uppercase block mb-1 font-bold">Required Action</span>
+                                                        <span className="text-zinc-300 text-xs">{item.data.required_user_action || "None required."}</span>
+                                                    </div>
+                                                    <div className="bg-black/50 border border-zinc-800/50 rounded p-2">
+                                                        <span className="text-[9px] text-zinc-500 uppercase block mb-1 font-bold">Policies Mentioned</span>
+                                                        {item.data.policies_mentioned && item.data.policies_mentioned.length > 0 ? (
+                                                            <ul className="list-disc pl-4 text-zinc-300 text-xs marker:text-zinc-700 space-y-1">
+                                                                {item.data.policies_mentioned.map((p: string, i: number) => <li key={i}>{p}</li>)}
+                                                            </ul>
+                                                        ) : (
+                                                            <span className="text-zinc-500 text-xs italic">No policies cited.</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </details>
+                                        </>
+                                    ) : (
+                                        <span className="text-[10px] font-mono text-red-500/70">Failed to parse JSON schema.</span>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+"I gather that you're unable to make the payment for your recent purchase and would like to cancel it. I apologize for any inconvenience this may have caused. To assist you in canceling the purchase and resolving this issue, please follow the steps below: 1. Log into your {{Online Company Portal Info}} using your credentials. 2. Locate the '{{Online Order Interaction}}' or '{{Online Order Interaction}}' section, and navigate to the specific purchase you would like to cancel. 3. Select the option labeled '{{Online Order Interaction}}' associated with your purchase. 4. Take note that there may be additional instructions or questions prompted by the system, and your cooperation in providing the necessary information is greatly appreciated. If you encounter any difficulties or have further questions, our dedicated support team is available to assist you during {{Customer Support Hours}}. You can reach us via {{Customer Support Phone Number}} or through the Live Chat feature on our website at {{Website URL}}. Rest assured that we are committed to resolving this issue and ensuring your satisfaction."
 
 // ============================================================================
 // 1. HELPER COMPONENTS
@@ -66,20 +351,19 @@ const ContextGauge = ({ stats, limit }: { stats: { active: number, total: number
 // ============================================================================
 
 const AVAILABLE_MODELS = [
-    // --- LIGHTWEIGHT (Mobile/Laptop Friendly) ---
+    // {
+    //     id: "NotReleasedYet",
+    //     name: "Gemma 4 E2B",
+    //     size: "1.45 GB",
+    //     vram: "2.5GB",
+    //     desc: "Google's newest Edge model. Perfect for fast, zero-latency JSON extraction."
+    // },
     {
         id: "Llama-3.2-1B-Instruct-q4f16_1-MLC",
         name: "Llama 3.2 1B",
         size: "1.2 GB",
         vram: "2GB",
-        desc: "Fastest. Best for JSON & Chat."
-    },
-    {
-        id: "gemma-2b-it-q4f16_1-MLC",
-        name: "Gemma 2B",
-        size: "1.4 GB",
-        vram: "2.5GB",
-        desc: "Google's efficient open model. Great instruction following."
+        desc: "Fastest alternative. Good for simple formatting."
     },
     {
         id: "Qwen2.5-1.5B-Instruct-q4f16_1-MLC",
@@ -88,8 +372,6 @@ const AVAILABLE_MODELS = [
         vram: "3GB",
         desc: "Excellent reasoning for its size. Rivals larger models."
     },
-
-    // --- MIDDLEWEIGHT (Good balance) ---
     {
         id: "Phi-3.5-mini-instruct-q4f16_1-MLC",
         name: "Phi 3.5 Mini",
@@ -104,8 +386,6 @@ const AVAILABLE_MODELS = [
         vram: "6GB",
         desc: "The standard for accuracy. Requires 8GB+ RAM."
     },
-
-    // --- HEAVYWEIGHT (Discrete GPU Required) ---
     {
         id: "Mistral-7B-Instruct-v0.3-q4f16_1-MLC",
         name: "Mistral 7B",
@@ -126,6 +406,7 @@ const DEMO_APPS = [
     { id: "chat", name: "Chat", icon: MessageSquare },
     { id: "json", name: "JSON Refinery", icon: FileJson },
     { id: "redact", name: "PII Redactor", icon: Eraser },
+    { id: "bulkapp", name: "Bulk JSON", icon: File },
 ];
 
 // ============================================================================
@@ -135,20 +416,20 @@ const DEMO_APPS = [
 export default function Playground() {
     const hookData = useLocalAI();
 
-    // Safety destructuring
     const {
         loadModel, chat, isReady = false, isLoading = false, progress, response, error,
         queue = [], role = "PENDING", tabId, tps
     } = hookData || {};
 
     const [selectedModel, setSelectedModel] = useState(AVAILABLE_MODELS[0]);
-    const [activeApp, setActiveApp] = useState("chat");
+    const [activeApp, setActiveApp] = useState("json"); // Set JSON as default for your demo
     const [tpsHistory, setTpsHistory] = useState(new Array(40).fill(0));
+    
+    // NEW UI STATE: Sidebar Toggle
+    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
     const [bootState, setBootState] = useState<"IDLE" | "LOADING" | "ERROR" | "WORKSPACE">("IDLE");
 
-    // 🆕 FIX: SYNC UI DROPDOWN WITH ACTUAL ENGINE STATE
-    // This checks what the Leader (or previous session) loaded into VRAM
     useEffect(() => {
         const syncModelSelection = () => {
             try {
@@ -156,20 +437,12 @@ export default function Playground() {
                 if (savedConfig) {
                     const config = JSON.parse(savedConfig);
                     const modelId = typeof config.model === 'string' ? config.model : config.model.model_id;
-
                     const found = AVAILABLE_MODELS.find(m => m.id === modelId);
-                    if (found) {
-                        setSelectedModel(found);
-                    }
+                    if (found) setSelectedModel(found);
                 }
-            } catch (e) {
-                // Ignore parsing errors
-            }
+            } catch (e) { }
         };
-
         syncModelSelection();
-
-        // Also sync whenever we become ready (in case we just joined a session)
         if (isReady) syncModelSelection();
     }, [isReady]);
 
@@ -189,21 +462,13 @@ export default function Playground() {
         });
     }, [tps]);
 
-    useEffect(() => { setTpsHistory(prev => [...prev.slice(1), tps]); }, [tps]);
-
     return (
         <div id="playground" className="w-full min-h-[900px] bg-black border-t border-zinc-900 relative font-sans flex flex-col items-center py-24">
-
             <div className="absolute inset-0 bg-[linear-gradient(to_right,#3f3f4612_1px,transparent_1px),linear-gradient(to_bottom,#3f3f4612_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] pointer-events-none" />
 
-            {/* HEADER */}
             <div className="relative z-10 text-center mb-12 space-y-4 px-4">
                 <ZincTooltip content="Distributes GPU load through a Leader-Follower architecture.">
                     <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-sky-500/30 bg-sky-500/10 text-sky-400 text-xs font-mono font-medium cursor-help">
-                        {/* <span className="relative flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
-                        </span> */}
                         <BraiLogo width={12} height={12} />
                         BROWSER NATIVE SWARM
                     </div>
@@ -217,163 +482,145 @@ export default function Playground() {
                 </p>
             </div>
 
-            {/* MAIN INTERFACE GRID */}
-            {/* MAIN INTERFACE GRID */}
-            <div className="relative z-20 w-full max-w-6xl px-4 md:px-6">
+            <div className="relative z-20 w-full max-w-[1400px] px-4 md:px-6">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-auto lg:h-[750px] transition-all duration-500 ease-in-out">
 
-                {/* FIX 1: "h-auto lg:h-[700px]" 
-       - On Mobile: The height grows with content (no scroll trapping).
-       - On Desktop: It locks to 700px for that dashboard look.
-    */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-auto lg:h-[700px]">
-
-                    {/* --- LEFT PANEL: CONFIG --- */}
-                    {/* FIX 2: "h-auto lg:h-full" - Let it just be a normal list on mobile */}
-                    <div className="lg:col-span-4 flex flex-col gap-6 h-auto lg:h-full overflow-visible lg:overflow-y-auto pr-1 order-2 lg:order-1">
-
-                        {/* 1. CONFIG CARD */}
-                        <div className="p-1 rounded-xl bg-gradient-to-b from-zinc-800 to-zinc-900 shadow-2xl shrink-0">
-                            <div className="bg-black/90 backdrop-blur rounded-lg p-6 border border-white/5 space-y-6">
-                                <div className="flex items-center gap-2 text-white font-bold">
-                                    <Box className="w-5 h-5 text-sky-500" />
-                                    Model Configuration
-                                </div>
-                                <div className="space-y-4">
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-medium text-zinc-500 uppercase">Select Model</label>
-                                        <select
-                                            disabled={bootState !== "IDLE"}
-                                            value={selectedModel.id}
-                                            onChange={(e) => {
-                                                const m = AVAILABLE_MODELS.find(x => x.id === e.target.value);
-                                                if (m) setSelectedModel(m);
-                                            }}
-                                            className="w-full bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm rounded-lg px-3 py-2.5 focus:ring-1 focus:ring-sky-500 outline-none appearance-none disabled:opacity-50"
-                                        >
-                                            {AVAILABLE_MODELS.map(m => (
-                                                <option key={m.id} value={m.id}>{m.name} ({m.size})</option>
-                                            ))}
-                                        </select>
+                    {/* --- LEFT PANEL: CONFIG (Collapsible) --- */}
+                    {isSidebarOpen && (
+                        <div className="lg:col-span-3 flex flex-col gap-6 h-auto lg:h-full overflow-visible lg:overflow-y-auto pr-1 order-2 lg:order-1 opacity-100 transition-opacity duration-300">
+                            <div className="p-1 rounded-xl bg-gradient-to-b from-zinc-800 to-zinc-900 shadow-2xl shrink-0">
+                                <div className="bg-black/90 backdrop-blur rounded-lg p-6 border border-white/5 space-y-6">
+                                    <div className="flex items-center gap-2 text-white font-bold">
+                                        <Box className="w-5 h-5 text-sky-500" />
+                                        Model Configuration
                                     </div>
-
-                                    <div className="flex gap-2 items-start text-[10px] text-zinc-500 leading-relaxed">
-                                        <div className="mt-0.5 min-w-[14px]">
-                                            <Search className="w-3.5 h-3.5" />
-                                        </div>
-                                        <p>
-                                            Looking for more? Find{" "}
-                                            <a
-                                                href="https://huggingface.co/models?search=q4f16_1-MLC"
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-sky-500 hover:text-sky-400 hover:underline transition-colors"
+                                    <div className="space-y-4">
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-medium text-zinc-500 uppercase">Select Model</label>
+                                            <select
+                                                disabled={bootState !== "IDLE"}
+                                                value={selectedModel.id}
+                                                onChange={(e) => {
+                                                    const m = AVAILABLE_MODELS.find(x => x.id === e.target.value);
+                                                    if (m) setSelectedModel(m);
+                                                }}
+                                                className="w-full bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm rounded-lg px-3 py-2.5 focus:ring-1 focus:ring-sky-500 outline-none appearance-none disabled:opacity-50"
                                             >
-                                                compatible models
-                                            </a>
-                                            {" "}on HuggingFace ending in{" "}
-                                            <code className="bg-zinc-950 border border-zinc-800 px-1 py-0.5 rounded text-zinc-300 font-mono">
-                                                q4f16_1-MLC
-                                            </code>
-                                        </p>
-                                    </div>
-                                    <div className="p-3 bg-zinc-900/50 rounded-lg border border-zinc-800">
-                                        <div className="flex justify-between items-center mb-1">
-                                            <span className="text-xs font-bold text-zinc-400">VRAM Required</span>
-                                            <span className="text-xs font-mono text-sky-400">{selectedModel.vram}</span>
+                                                {AVAILABLE_MODELS.map(m => (
+                                                    <option key={m.id} value={m.id}>{m.name} ({m.size})</option>
+                                                ))}
+                                            </select>
                                         </div>
-                                        <p className="text-[11px] text-zinc-500 leading-tight">{selectedModel.desc}</p>
-                                    </div>
-                                    <div className={`space-y-2 transition-opacity duration-500 ${bootState === "WORKSPACE" ? "opacity-100" : "opacity-30 pointer-events-none"}`}>
-                                        <label className="text-xs font-medium text-zinc-500 uppercase">Active Application</label>
-                                        <div className="grid grid-cols-3 gap-2">
-                                            {DEMO_APPS.map((app) => (
-                                                <button
-                                                    key={app.id}
-                                                    onClick={() => setActiveApp(app.id)}
-                                                    className={`flex flex-col items-center justify-center gap-1.5 p-2 rounded-lg border text-[10px] font-medium transition-all ${activeApp === app.id
-                                                        ? "bg-zinc-800 border-zinc-600 text-white shadow-lg"
-                                                        : "bg-transparent border-zinc-800 text-zinc-500 hover:bg-zinc-900"
-                                                        }`}
-                                                >
-                                                    <app.icon className="w-4 h-4" />
-                                                    {app.name}
-                                                </button>
-                                            ))}
+                                        <div className="flex gap-2 items-start text-[10px] text-zinc-500 leading-relaxed">
+                                            <div className="mt-0.5 min-w-[14px]">
+                                                <Search className="w-3.5 h-3.5" />
+                                            </div>
+                                            <p>
+                                                Looking for more? Find <a href="https://huggingface.co/models?search=q4f16_1-MLC" target="_blank" rel="noopener noreferrer" className="text-sky-500 hover:text-sky-400 hover:underline transition-colors">compatible models</a> on HuggingFace ending in <code className="bg-zinc-950 border border-zinc-800 px-1 py-0.5 rounded text-zinc-300 font-mono">q4f16_1-MLC</code>
+                                            </p>
+                                        </div>
+                                        <div className="p-3 bg-zinc-900/50 rounded-lg border border-zinc-800">
+                                            <div className="flex justify-between items-center mb-1">
+                                                <span className="text-xs font-bold text-zinc-400">VRAM Required</span>
+                                                <span className="text-xs font-mono text-sky-400">{selectedModel.vram}</span>
+                                            </div>
+                                            <p className="text-[11px] text-zinc-500 leading-tight">{selectedModel.desc}</p>
+                                        </div>
+                                        <div className={`space-y-2 transition-opacity duration-500 ${bootState === "WORKSPACE" ? "opacity-100" : "opacity-30 pointer-events-none"}`}>
+                                            <label className="text-xs font-medium text-zinc-500 uppercase">Active Application</label>
+                                            <div className="grid grid-cols-1 gap-2">
+                                                {DEMO_APPS.map((app) => (
+                                                    <button
+                                                        key={app.id}
+                                                        onClick={() => setActiveApp(app.id)}
+                                                        className={`flex items-center justify-start gap-2 p-2.5 rounded-lg border text-xs font-medium transition-all ${activeApp === app.id
+                                                            ? "bg-zinc-800 border-zinc-600 text-white shadow-lg"
+                                                            : "bg-transparent border-zinc-800 text-zinc-500 hover:bg-zinc-900"
+                                                            }`}
+                                                    >
+                                                        <app.icon className="w-4 h-4" />
+                                                        {app.name}
+                                                    </button>
+                                                ))}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
 
-                        {/* 2. TELEMETRY */}
-                        <div className="p-1 rounded-xl bg-zinc-900 border border-zinc-800 shadow-xl overflow-hidden shrink-0">
-                            <div className="p-6 space-y-4">
-                                <div className="flex items-center justify-between text-zinc-300 font-bold text-sm">
-                                    <div className="flex items-center gap-2"><Activity className="w-4 h-4 text-sky-500" /> Telemetry</div>
-                                    {role && role !== "PENDING" && (
-                                        <ZincTooltip content={`This tab is opened as a ${role} of the swarm queue.`}>
-                                            <div className={`text-[10px] uppercase px-2 py-0.5 rounded border flex items-center gap-1 ${role === "LEADER" ? "bg-sky-500/10 text-sky-400 border-sky-500/30" : "bg-indigo-500/10 text-indigo-400 border-indigo-500/30"}`}>
-                                                {role === "LEADER" ? <Zap className="w-3 h-3" /> : <Share2 className="w-3 h-3" />}
-                                                {role}
-                                            </div>
-                                        </ZincTooltip>
-                                    )}
-                                </div>
-                                <div className="relative p-3 bg-black/50 rounded border border-zinc-800 overflow-hidden flex flex-col justify-between h-20">
-                                    <Sparkline data={tpsHistory} color="#0ea5e9" />
-                                    <div className="relative z-10 text-[10px] text-zinc-500 uppercase tracking-wider mb-1 font-semibold">Speed</div>
-                                    <div className="relative z-10 flex items-end gap-2">
-                                        <div className="text-2xl font-mono text-white leading-none">{tps}</div>
-                                        <span className="text-xs text-sky-400 font-mono mb-1">tokens per second</span>
+                            <div className="p-1 rounded-xl bg-zinc-900 border border-zinc-800 shadow-xl overflow-hidden shrink-0">
+                                <div className="p-6 space-y-4">
+                                    <div className="flex items-center justify-between text-zinc-300 font-bold text-sm">
+                                        <div className="flex items-center gap-2"><Activity className="w-4 h-4 text-sky-500" /> Telemetry</div>
+                                        {role && role !== "PENDING" && (
+                                            <ZincTooltip content={`This tab is opened as a ${role} of the swarm queue.`}>
+                                                <div className={`text-[10px] uppercase px-2 py-0.5 rounded border flex items-center gap-1 ${role === "LEADER" ? "bg-sky-500/10 text-sky-400 border-sky-500/30" : "bg-indigo-500/10 text-indigo-400 border-indigo-500/30"}`}>
+                                                    {role === "LEADER" ? <Zap className="w-3 h-3" /> : <Share2 className="w-3 h-3" />}
+                                                    {role}
+                                                </div>
+                                            </ZincTooltip>
+                                        )}
                                     </div>
-                                </div>
-                                {/* Queue List */}
-                                <div className="space-y-2 pt-2 border-t border-zinc-800">
-                                    <div className="flex items-center justify-between text-xs text-zinc-500 font-bold uppercase tracking-wider">
-                                        <span>Job Queue</span>
-                                        <span className="bg-zinc-800 px-1.5 rounded text-zinc-400">{queue.length}</span>
-                                    </div>
-                                    {queue.length === 0 && !isLoading && (
-                                        <div className="text-center py-2 text-zinc-700 text-xs italic">Idle. Ready for requests.</div>
-                                    )}
-                                    {isLoading && (
-                                        <div className="flex items-center gap-3 p-2 rounded bg-sky-500/10 border border-sky-500/20 animate-pulse">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-sky-500" />
-                                            <div className="flex-1">
-                                                <div className="text-xs font-bold text-sky-400">Processing...</div>
-                                            </div>
+                                    <div className="relative p-3 bg-black/50 rounded border border-zinc-800 overflow-hidden flex flex-col justify-between h-20">
+                                        <Sparkline data={tpsHistory} color="#0ea5e9" />
+                                        <div className="relative z-10 text-[10px] text-zinc-500 uppercase tracking-wider mb-1 font-semibold">Speed</div>
+                                        <div className="relative z-10 flex items-end gap-2">
+                                            <div className="text-2xl font-mono text-white leading-none">{tps}</div>
+                                            <span className="text-xs text-sky-400 font-mono mb-1">tokens per second</span>
                                         </div>
-                                    )}
-                                    {queue.slice(0, 3).map((job: any, i: number) => (
-                                        <div key={job.id} className="flex items-center gap-3 p-2 rounded bg-zinc-950/50 border border-zinc-800">
-                                            <div className="text-zinc-600 text-xs font-mono w-4">#{i + 1}</div>
-                                            <div className="flex-1">
-                                                <div className="text-xs text-zinc-300 flex items-center gap-2">
-                                                    {job.from === tabId ? <span className="text-emerald-400 font-bold">You</span> : <span className="text-indigo-400">Remote</span>}
-                                                    <span className="text-[10px] text-zinc-600 ml-auto">Waiting</span>
+                                    </div>
+                                    <div className="space-y-2 pt-2 border-t border-zinc-800">
+                                        <div className="flex items-center justify-between text-xs text-zinc-500 font-bold uppercase tracking-wider">
+                                            <span>Job Queue</span>
+                                            <span className="bg-zinc-800 px-1.5 rounded text-zinc-400">{queue.length}</span>
+                                        </div>
+                                        {queue.length === 0 && !isLoading && (
+                                            <div className="text-center py-2 text-zinc-700 text-xs italic">Idle. Ready for requests.</div>
+                                        )}
+                                        {isLoading && (
+                                            <div className="flex items-center gap-3 p-2 rounded bg-sky-500/10 border border-sky-500/20 animate-pulse">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-sky-500" />
+                                                <div className="flex-1">
+                                                    <div className="text-xs font-bold text-sky-400">Processing...</div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        )}
+                                        {queue.slice(0, 3).map((job: any, i: number) => (
+                                            <div key={job.id} className="flex items-center gap-3 p-2 rounded bg-zinc-950/50 border border-zinc-800">
+                                                <div className="text-zinc-600 text-xs font-mono w-4">#{i + 1}</div>
+                                                <div className="flex-1">
+                                                    <div className="text-xs text-zinc-300 flex items-center gap-2">
+                                                        {job.from === tabId ? <span className="text-emerald-400 font-bold">You</span> : <span className="text-indigo-400">Remote</span>}
+                                                        <span className="text-[10px] text-zinc-600 ml-auto">Waiting</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    {isReady && <button onClick={() => window.location.reload()} className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium text-red-400 hover:bg-red-500/10 rounded-lg transition-colors border border-transparent hover:border-red-500/20">
+                                        <RefreshCw className="w-3 h-3" /> Unload & Reset
+                                    </button>}
                                 </div>
-                                {isReady && <button onClick={() => window.location.reload()} className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium text-red-400 hover:bg-red-500/10 rounded-lg transition-colors border border-transparent hover:border-red-500/20">
-                                    <RefreshCw className="w-3 h-3" /> Unload & Reset
-                                </button>}
                             </div>
                         </div>
-                    </div>
+                    )}
 
-                    {/* --- RIGHT PANEL: WORKSPACE --- */}
-                    {/* FIX 3: "h-[600px] lg:h-full" 
-            - On Mobile: Force a 600px window so the Chat has room to exist.
-            - On Desktop: Fill the remaining grid height.
-        */}
-                    <div className="lg:col-span-8 h-[600px] lg:h-full flex flex-col rounded-2xl border border-zinc-800 bg-black shadow-2xl overflow-hidden relative order-1 lg:order-2">
+                    {/* --- RIGHT PANEL: WORKSPACE (Expands when Sidebar is Closed) --- */}
+                    <div className={`${isSidebarOpen ? 'lg:col-span-9' : 'lg:col-span-12'} h-[600px] lg:h-full flex flex-col rounded-2xl border border-zinc-800 bg-black shadow-2xl overflow-hidden relative order-1 lg:order-2 transition-all duration-500 ease-in-out`}>
                         <div className="h-12 border-b border-zinc-800 bg-zinc-900/50 flex items-center justify-between px-4 shrink-0">
-                            <div className="flex gap-1.5">
-                                <div className="w-3 h-3 rounded-full bg-red-500/20 border border-red-500/50" />
-                                <div className="w-3 h-3 rounded-full bg-amber-500/20 border border-amber-500/50" />
-                                <div className="w-3 h-3 rounded-full bg-emerald-500/20 border border-emerald-500/50" />
+                            <div className="flex gap-4 items-center">
+                                <div className="flex gap-1.5">
+                                    <div className="w-3 h-3 rounded-full bg-red-500/20 border border-red-500/50" />
+                                    <div className="w-3 h-3 rounded-full bg-amber-500/20 border border-amber-500/50" />
+                                    <div className="w-3 h-3 rounded-full bg-emerald-500/20 border border-emerald-500/50" />
+                                </div>
+                                <button 
+                                    onClick={() => setIsSidebarOpen(!isSidebarOpen)} 
+                                    className="hidden lg:flex items-center justify-center w-6 h-6 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors"
+                                    title={isSidebarOpen ? "Hide Config Panel" : "Show Config Panel"}
+                                >
+                                    {isSidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
+                                </button>
                             </div>
                             <div className="text-xs font-mono text-zinc-500 flex items-center gap-2">
                                 {activeApp}
@@ -389,7 +636,6 @@ export default function Playground() {
                         </div>
 
                         <div className="flex-1 overflow-hidden relative">
-                            {/* VIEW 1: IDLE */}
                             {bootState === "IDLE" && (
                                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 flex flex-col items-center justify-center text-zinc-500 space-y-6 p-8 text-center z-10">
                                     <div className="p-4 bg-zinc-900 rounded-full border border-zinc-800">
@@ -408,7 +654,6 @@ export default function Playground() {
                                 </motion.div>
                             )}
 
-                            {/* VIEW 2: LOADING */}
                             {bootState === "LOADING" && (
                                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 flex flex-col items-center justify-center p-12 z-20 bg-black/80 backdrop-blur-sm">
                                     <Loader2 className="w-10 h-10 text-sky-500 animate-spin mb-6" />
@@ -421,7 +666,6 @@ export default function Playground() {
                                 </motion.div>
                             )}
 
-                            {/* VIEW 3: ERROR */}
                             {bootState === "ERROR" && (
                                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 flex flex-col items-center justify-center p-12 z-20 bg-black/90 backdrop-blur-sm text-center">
                                     <div className="p-4 bg-red-500/10 rounded-full mb-6"><AlertTriangle className="w-10 h-10 text-red-500" /></div>
@@ -433,12 +677,12 @@ export default function Playground() {
                                 </motion.div>
                             )}
 
-                            {/* VIEW 4: WORKSPACE */}
                             {bootState === "WORKSPACE" && (
                                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 z-30 bg-[#050505] overflow-hidden">
                                     {activeApp === "chat" && <ChatApp chat={chat} isLoading={isLoading} streamBuffer={response} />}
                                     {activeApp === "json" && <JsonApp chat={chat} isLoading={isLoading} streamBuffer={response} />}
                                     {activeApp === "redact" && <RedactApp chat={chat} isLoading={isLoading} streamBuffer={response} />}
+                                    {activeApp === "bulkapp" && < BulkApp chat={chat} isLoading={isLoading} streamBuffer={response} />}
                                 </motion.div>
                             )}
                         </div>
@@ -451,9 +695,10 @@ export default function Playground() {
 }
 
 // ============================================================================
-// SUB-APP: CHAT (Updated to separate stream from history)
+// SUB-APP: CHAT (Untouched)
 // ============================================================================
 const ChatApp = ({ chat, isLoading, streamBuffer }: any) => {
+    // ... [Content untouched from your previous code]
     const activeStream = streamBuffer;
 
     const formatTime = (isoString: string) => {
@@ -474,21 +719,18 @@ const ChatApp = ({ chat, isLoading, streamBuffer }: any) => {
         timestamp: new Date().toISOString()
     };
 
-    // 1. Init History
     useEffect(() => {
         setIsMounted(true);
         const saved = localStorage.getItem(STORAGE_KEY);
         setMessages(saved ? JSON.parse(saved) : [DEFAULT_MSG]);
     }, []);
 
-    // 2. Persist History
     useEffect(() => {
         if (isMounted && messages.length > 0) {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
         }
     }, [messages, isMounted]);
 
-    // 3. Commit Stream to History when finished
     useEffect(() => {
         if (!isLoading && activeStream && activeStream.length > 0) {
             setMessages(prev => [
@@ -498,7 +740,6 @@ const ChatApp = ({ chat, isLoading, streamBuffer }: any) => {
         }
     }, [isLoading, activeStream]);
 
-    // 4. Auto-Scroll
     useEffect(() => {
         if (scrollRef.current) scrollRef.current.scrollIntoView({ behavior: "smooth" });
     }, [messages, activeStream, isLoading]);
@@ -521,26 +762,17 @@ const ChatApp = ({ chat, isLoading, streamBuffer }: any) => {
     if (!isMounted) return null;
 
     return (
-        // FIX: Changed h-full to h-[600px] md:h-full
-        // This forces a 600px height on mobile so it doesn't collapse, 
-        // but fills the grid cell on desktop.
         <div className="flex flex-col h-[600px] md:h-full bg-[#050505] relative border-t md:border-t-0 border-zinc-800 overflow-y-scroll">
-
-            {/* Trash Button */}
             <div className="absolute top-4 right-6 z-10">
                 <button onClick={() => { localStorage.removeItem(STORAGE_KEY); setMessages([DEFAULT_MSG]); }} className="p-2 bg-zinc-900/80 hover:bg-red-900/30 text-zinc-500 hover:text-red-400 rounded-lg border border-zinc-800 transition-colors backdrop-blur-sm">
                     <Trash2 className="w-4 h-4" />
                 </button>
             </div>
-
-            {/* Context Gauge (Desktop Only) */}
             <div className="absolute top-4 right-16 z-20 hidden md:block">
                 <div className="bg-black/40 backdrop-blur border border-zinc-800 p-2 rounded-lg">
                     <ContextGauge stats={{ active: (messages.reduce((acc, m) => acc + m.content.length, 0) + (activeStream?.length || 0)), total: 4096 }} limit={4096} />
                 </div>
             </div>
-
-            {/* Messages Area */}
             <div className="flex-1 p-6 space-y-6 overflow-y-scroll scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
                 {messages.map((m, i) => (
                     <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
@@ -563,8 +795,6 @@ const ChatApp = ({ chat, isLoading, streamBuffer }: any) => {
                         </div>
                     </div>
                 ))}
-
-                {/* Stream Bubble */}
                 {isLoading && (
                     <div className="flex justify-start">
                         <div className="max-w-[90%] md:max-w-[80%] rounded-2xl rounded-bl-none px-5 py-3.5 text-sm leading-relaxed shadow-sm bg-zinc-800 text-zinc-200">
@@ -582,8 +812,6 @@ const ChatApp = ({ chat, isLoading, streamBuffer }: any) => {
                 )}
                 <div ref={scrollRef} />
             </div>
-
-            {/* Input Area */}
             <div className="p-4 border-t border-zinc-800 bg-zinc-900/30 z-99">
                 <div className="flex gap-3 items-end bg-black border border-zinc-800 rounded-lg px-4 py-3 focus-within:border-zinc-600 focus-within:ring-1 focus-within:ring-zinc-600 transition-all">
                     <textarea
@@ -607,34 +835,146 @@ const ChatApp = ({ chat, isLoading, streamBuffer }: any) => {
 };
 
 // ============================================================================
-// SUB-APP: JSON REFINERY
+// SUB-APP: SUPPORT TICKET ANALYZER (FLEXBOX LAYOUT WITH TOGGLES)
 // ============================================================================
 const JsonApp = ({ chat, isLoading, streamBuffer }: any) => {
-    const [input, setInput] = useState("John Doe is a Senior Engineer with 5 years of experience. Contact: john@example.com");
+    const [input, setInput] = useState(
+        "I'll make it happen! I understand your urgency in accessing our refund policy and getting all the necessary information about it. Our refund policy is designed with your satisfaction in mind, ensuring a fair and transparent process. To view our refund policy, you can visit our website and navigate to the \"Refund Policy\" section. There you will find detailed information about the situations in which you may be eligible for a refund, including product defects, cancellations within the grace period, unauthorized charges, event cancellations, duplicate charges, and non-receipt of goods. Remember that specific vendors or service providers may have additional nuances in their refund policies, so it's always a good idea to consult directly with them or review their terms and conditions for a comprehensive understanding. If you have any specific questions or concerns regarding our refund policy or a particular order, please provide me with the necessary details, such as the order number or any relevant information, and I'll be more than happy to assist you further. Your satisfaction is our top priority, and we want to ensure you have a clear understanding of our refund policy and how we can best support you."
+    );
     const [output, setOutput] = useState("");
-    useEffect(() => { if (isLoading && streamBuffer) setOutput(streamBuffer); }, [streamBuffer, isLoading]);
+
+    // NEW UI STATE
+    const [showSchema, setShowSchema] = useState(true);
+    const [isOutputExpanded, setIsOutputExpanded] = useState(false);
+
+    const supportSchema = {
+        "intent": "string (Core topic of the text)",
+        "tone": "Enum: [Empathetic, Professional, Apologetic, Frustrated]",
+        "resolution_provided": "boolean",
+        "required_user_action": "string (What the user must do next)",
+        "policies_mentioned": "array of strings (Specific rules cited)"
+    };
+    
+    useEffect(() => { 
+        if (isLoading && streamBuffer) setOutput(streamBuffer); 
+    }, [streamBuffer, isLoading]);
 
     const handleExtract = async () => {
         if (isLoading) return;
         setOutput("");
         await chat([
-            { role: "system", content: "Extract to JSON: name, role, email. Output JSON only." },
-            { role: "user", content: input }
+            { 
+                role: "system", 
+                content: "You are a strict customer support log analyzer. Extract the data into JSON. Output ONLY valid JSON. Do not add any conversational text. Use null if a piece of data is missing. The keys must be exactly: intent, tone, resolution_provided, required_user_action, policies_mentioned." 
+            },
+            {
+                role: "user",
+                content: "Text: I am so sorry your package was delayed. We have issued a full refund. Please print the return label attached and drop the broken item at USPS."
+            },
+            {
+                role: "assistant",
+                content: "{\n  \"intent\": \"item_return_and_refund\",\n  \"tone\": \"Apologetic\",\n  \"resolution_provided\": true,\n  \"required_user_action\": \"Print return label and drop at USPS\",\n  \"policies_mentioned\": []\n}"
+            },
+            { role: "user", content: `Text: ${input}` }
         ]);
     };
 
     return (
         <div className="p-6 h-full flex flex-col bg-[#050505]">
-            <div className="mb-6"><h3 className="text-white font-bold">JSON Refinery</h3></div>
-            <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-6 h-full min-h-0">
-                <textarea value={input} onChange={(e) => setInput(e.target.value)} className="flex-1 bg-zinc-900/30 border border-zinc-800 rounded-lg p-4 text-sm text-zinc-300 focus:outline-none focus:border-zinc-700 resize-none" />
-                <div className="flex-1 bg-[#0a0a0a] border border-zinc-800 rounded-lg p-4 font-mono text-sm text-emerald-400 overflow-auto">
-                    <pre>{output || "// Waiting..."}</pre>
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                    <h3 className="text-white font-bold flex items-center gap-2">
+                        <FileJson className="w-5 h-5 text-sky-500" />
+                        Zero-Cost Pipeline: Support Log Analyzer
+                    </h3>
+                    
+                    {/* BUTTON TO RESTORE SCHEMA IF HIDDEN */}
+                    {!showSchema && (
+                        <button 
+                            onClick={() => setShowSchema(true)} 
+                            className="text-xs font-mono flex items-center gap-1.5 px-2 py-1 rounded-md bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors"
+                        >
+                            <Eye className="w-3 h-3" /> Show Schema
+                        </button>
+                    )}
                 </div>
+
+                {isLoading && (
+                    <span className="text-xs font-mono text-sky-400 animate-pulse bg-sky-500/10 px-2 py-1 rounded border border-sky-500/20">
+                        Running local inference...
+                    </span>
+                )}
             </div>
+            
+            {/* HORIZONTAL FLEX LAYOUT (Automatically resizes based on state) */}
+            <div className="flex-1 flex flex-col lg:flex-row gap-4 h-full min-h-0">
+
+                <div className={`flex flex-col  ${isOutputExpanded ? 'lg:w-[30%]' : 'lg:w-[60%]'}`}>
+                    {/* 1. SCHEMA AREA (Collapsible) */}
+                    {showSchema && (
+                        <div className={`flex flex-col gap-2 h-1/2 transition-all duration-500 ease-in-out `}>
+                            <div className="flex items-center justify-between">
+                                <label className="text-[10px] uppercase tracking-wider text-zinc-500 font-bold flex items-center gap-2">
+                                    <Database className="w-3 h-3" /> Target Schema
+                                </label>
+                                <button 
+                                    onClick={() => setShowSchema(false)} 
+                                    className="text-zinc-600 hover:text-red-400 transition-colors"
+                                    title="Hide Schema Column"
+                                >
+                                    <EyeOff className="w-3.5 h-3.5" />
+                                </button>
+                            </div>
+                            <div className="flex-1 bg-[#0a0a0a] border border-zinc-800 rounded-lg p-4 font-mono text-[11px] text-zinc-400 overflow-auto scrollbar-thin scrollbar-thumb-zinc-800">
+                                <pre>{JSON.stringify(supportSchema, null, 2)}</pre>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 2. INPUT AREA (Automatically adjusts width) */}
+                    <div className={`flex flex-col gap-2 transition-all duration-500 ease-in-out ${showSchema?'h-1/2':'h-full'} w-full `}>
+                        <label className="text-[10px] uppercase tracking-wider text-zinc-500 font-bold flex items-center gap-2 h-4">
+                            <MessageSquare className="w-3 h-3" /> Raw Text Input
+                        </label>
+                        <textarea 
+                            value={input} 
+                            onChange={(e) => setInput(e.target.value)} 
+                            className="flex-1 bg-zinc-900/30 border border-zinc-800 rounded-lg p-4 text-sm text-zinc-300 focus:outline-none focus:border-zinc-700 resize-none scrollbar-thin scrollbar-thumb-zinc-800 leading-relaxed" 
+                        />
+                    </div>
+
+                </div>
+
+
+                {/* 3. OUTPUT AREA (Expandable) */}
+                <div className={`flex flex-col gap-2 transition-all duration-500 ease-in-out ${isOutputExpanded ? 'flex-1' : (showSchema ? 'lg:w-[35%]' : 'lg:w-[50%]')}`}>
+                    <div className="flex items-center justify-between">
+                        <label className="text-[10px] uppercase tracking-wider text-emerald-500/70 font-bold flex items-center gap-2">
+                            <CheckCircle2 className="w-3 h-3" /> Structured Output
+                        </label>
+                        <button 
+                            onClick={() => setIsOutputExpanded(!isOutputExpanded)} 
+                            className="text-emerald-700 hover:text-emerald-400 transition-colors bg-emerald-900/20 p-1 rounded"
+                            title={isOutputExpanded ? "Shrink Output Panel" : "Maximize Output Panel"}
+                        >
+                            {isOutputExpanded ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
+                        </button>
+                    </div>
+                    <div className="flex-1 bg-[#05150c] border border-emerald-900/30 rounded-lg p-4 font-mono text-sm text-emerald-400 overflow-auto relative shadow-[inset_0_0_20px_rgba(16,185,129,0.02)] scrollbar-thin scrollbar-thumb-emerald-900/50">
+                        <pre className="whitespace-pre-wrap">{output || "// Awaiting execution..."}</pre>
+                    </div>
+                </div>
+                
+            </div>
+
             <div className="mt-6 flex justify-end">
-                <button onClick={handleExtract} disabled={isLoading} className="flex items-center gap-2 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white px-6 py-2.5 rounded-lg font-medium text-sm transition-colors">
-                    {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileJson className="w-4 h-4" />} Extract Data
+                <button 
+                    onClick={handleExtract} 
+                    disabled={isLoading || !input.trim()} 
+                    className="flex items-center gap-2 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white px-8 py-3 rounded-lg font-bold text-sm transition-all shadow-lg shadow-sky-500/20 hover:scale-[1.02]"
+                >
+                    {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4 fill-current" />} 
+                    Execute Pipeline
                 </button>
             </div>
         </div>
@@ -642,7 +982,7 @@ const JsonApp = ({ chat, isLoading, streamBuffer }: any) => {
 };
 
 // ============================================================================
-// SUB-APP: PII REDACTOR
+// SUB-APP: PII REDACTOR (Untouched)
 // ============================================================================
 const RedactApp = ({ chat, isLoading, streamBuffer }: any) => {
     const [input, setInput] = useState("Meeting with Sarah Jones at 2pm. Email her at sarah.j@company.org.");
