@@ -466,7 +466,7 @@ const DEMO_APPS = [
     { id: "chat", name: "Chat", icon: MessageSquare },
     { id: "json", name: "JSON Refinery", icon: FileJson },
     { id: "redact", name: "PII Redactor", icon: Eraser },
-    { id: "bulkapp", name: "Bulk JSON", icon: File },
+    { id: "bulkapp", name: "Bulk Customer Support Analyzer", icon: File },
 ];
 
 // ============================================================================
