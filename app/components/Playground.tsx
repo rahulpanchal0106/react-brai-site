@@ -221,7 +221,7 @@ const BulkApp = ({ chat, isLoading, streamBuffer }: any) => {
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start">
                         {/* We use slice().reverse() so the newest extractions show up at the top! */}
-                        {results.slice().reverse().map((item, idx) => (
+                        {results.slice().map((item, idx) => (
                             <div key={item.id} className={`bg-zinc-900/40 border rounded-xl p-4 flex flex-col gap-3 relative overflow-hidden ${item.status === "Processed" ? "border-zinc-800" : "border-red-900/30"}`}>
                                 {item.status === "Processed" && <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500/50"></div>}
                                 {item.status === "Failed" && <div className="absolute top-0 left-0 w-1 h-full bg-red-500/50"></div>}
