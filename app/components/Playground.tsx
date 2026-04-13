@@ -116,11 +116,25 @@ const BulkApp = ({ chat, isLoading, streamBuffer }: any) => {
             try {
                 latestResponse.current = ""; 
                 await chat(getPrompt(rawText)); 
-                await new Promise(resolve => setTimeout(resolve, 200));
                 
+                // ==========================================
+                // THE MACBOOK FIX: TWO-STAGE TRAFFIC LIGHT
+                // ==========================================
+                
+                // STAGE 1: Wait for the engine to START (isLoading flips to true)
+                // We poll every 50ms for up to 5 seconds to give the Mac time to wake up
+                let spinUpWaits = 0;
+                while (!isLoadingRef.current && spinUpWaits < 100) {
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                    spinUpWaits++;
+                }
+                
+                // STAGE 2: Wait for the engine to FINISH (isLoading flips to false)
                 while (isLoadingRef.current) {
                     await new Promise(resolve => setTimeout(resolve, 100));
                 }
+                
+                // ==========================================
                 
                 const rawOutput = latestResponse.current;
                 let parsedJson = null;
