@@ -12,6 +12,7 @@ import {
     FileText,
     UploadCloud,
     X,
+    Mail, Phone, GraduationCap, 
     Files
 } from "lucide-react";
 import { useLocalAI } from "react-brai";
@@ -1341,34 +1342,100 @@ Schema: ${JSON.stringify(resumeSchema)}`
                                 
                                 <div className="mt-auto pt-3 border-t border-zinc-800/50 flex flex-col gap-3">
                                     {item.data ? (
-                                        <>
-                                            <div className="flex gap-2 flex-wrap">
-                                                <span className="bg-black border border-zinc-800 px-2 py-1 rounded text-[10px] text-zinc-300 font-mono flex items-center gap-1">
-                                                    Name: <span className="text-indigo-400 font-bold truncate max-w-[80px]" title={item.data.name}>{item.data.name || "null"}</span>
-                                                </span>
-                                                <span className="bg-black border border-zinc-800 px-2 py-1 rounded text-[10px] text-zinc-300 font-mono flex items-center gap-1">
-                                                    Skills: <span className="text-emerald-400 font-bold">{item.data.skills?.length || 0}</span>
-                                                </span>
+                                        <div className="flex flex-col gap-3">
+                                            
+                                            {/* 1. Core Identity & Contact */}
+                                            <div>
+                                                <h4 className="text-white font-bold truncate text-sm" title={item.data.name || "Unknown Candidate"}>
+                                                    {item.data.name && item.data.name !== "null" ? item.data.name : "Unknown Candidate"}
+                                                </h4>
+                                                <div className="flex flex-col gap-1.5 mt-2">
+                                                    {item.data.email && item.data.email !== "null" && item.data.email !== "" && (
+                                                        <span className="text-[11px] text-zinc-400 flex items-center gap-2 truncate">
+                                                            <Mail className="w-3.5 h-3.5 text-indigo-400 shrink-0" /> {item.data.email}
+                                                        </span>
+                                                    )}
+                                                    {item.data.phone && item.data.phone !== "null" && item.data.phone !== "" && (
+                                                        <span className="text-[11px] text-zinc-400 flex items-center gap-2 truncate">
+                                                            <Phone className="w-3.5 h-3.5 text-indigo-400 shrink-0" /> {item.data.phone}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </div>
 
+                                            {/* 2. Skills Preview (Pill Badges) */}
+                                            {item.data.skills && Array.isArray(item.data.skills) && item.data.skills.length > 0 && (
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {item.data.skills.slice(0, 4).map((skill: string, i: number) => (
+                                                        <span key={i} className="bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-[9px] px-2 py-0.5 rounded-full truncate max-w-[100px]" title={skill}>
+                                                            {skill}
+                                                        </span>
+                                                    ))}
+                                                    {item.data.skills.length > 4 && (
+                                                        <span className="bg-zinc-800 text-zinc-400 text-[9px] px-2 py-0.5 rounded-full font-mono">
+                                                            +{item.data.skills.length - 4}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* 3. Deep Dive Details (Experience/Education) */}
                                             <details className="group">
-                                                <summary className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider cursor-pointer hover:text-zinc-300 transition-colors flex items-center gap-1 select-none outline-none list-none [&::-webkit-details-marker]:hidden">
+                                                <summary className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider cursor-pointer hover:text-zinc-300 transition-colors flex items-center gap-1 select-none outline-none list-none [&::-webkit-details-marker]:hidden mt-1">
                                                     <ChevronRight className="w-3 h-3 group-open:rotate-90 transition-transform" />
-                                                    View Full JSON
+                                                    View Background
                                                 </summary>
-                                                <div className="pt-3">
-                                                    <div className="bg-black/80 border border-zinc-800/50 rounded p-3 overflow-auto max-h-[200px] scrollbar-thin scrollbar-thumb-zinc-800">
-                                                        <pre className="text-[10px] text-indigo-300/80 font-mono m-0 leading-relaxed">
+                                                
+                                                <div className="pt-3 flex flex-col gap-3">
+                                                    {/* Experience List */}
+                                                    {item.data.experience && Array.isArray(item.data.experience) && item.data.experience.length > 0 && (
+                                                        <div className="space-y-1.5">
+                                                            <div className="text-[9px] uppercase font-bold text-zinc-500 flex items-center gap-1.5">
+                                                                <Briefcase className="w-3 h-3" /> Experience
+                                                            </div>
+                                                            <div className="bg-black/50 border border-zinc-800/50 rounded-lg p-2 flex flex-col gap-2">
+                                                                {item.data.experience.map((exp: any, i: number) => (
+                                                                    <div key={i} className="flex justify-between items-start gap-2 text-[10px] border-b border-zinc-800/50 last:border-0 pb-1.5 last:pb-0">
+                                                                        <span className="text-zinc-300 font-medium truncate" title={exp.company}>{exp.company || "Unknown"}</span>
+                                                                        <span className="text-zinc-500 shrink-0 font-mono">{exp.years || ""}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Education List */}
+                                                    {item.data.education && Array.isArray(item.data.education) && item.data.education.length > 0 && (
+                                                        <div className="space-y-1.5">
+                                                            <div className="text-[9px] uppercase font-bold text-zinc-500 flex items-center gap-1.5">
+                                                                <GraduationCap className="w-3 h-3" /> Education
+                                                            </div>
+                                                            <div className="bg-black/50 border border-zinc-800/50 rounded-lg p-2 flex flex-col gap-2">
+                                                                {item.data.education.map((edu: any, i: number) => (
+                                                                    <div key={i} className="flex flex-col gap-0.5 text-[10px] border-b border-zinc-800/50 last:border-0 pb-1.5 last:pb-0">
+                                                                        <span className="text-zinc-300 font-medium truncate" title={edu.degree}>{edu.degree || "Unknown"}</span>
+                                                                        <span className="text-zinc-500 font-mono">{edu.year || ""}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {/* Raw JSON Fallback */}
+                                                    <details className="mt-1">
+                                                        <summary className="text-[9px] text-zinc-600 hover:text-zinc-400 cursor-pointer italic transition-colors">Show Raw JSON Object</summary>
+                                                        <pre className="text-[9px] text-zinc-500 mt-2 bg-[#050505] border border-zinc-900 p-2 rounded-lg overflow-auto max-h-[100px] scrollbar-thin scrollbar-thumb-zinc-800">
                                                             {JSON.stringify(item.data, null, 2)}
                                                         </pre>
-                                                    </div>
+                                                    </details>
                                                 </div>
                                             </details>
-                                        </>
+
+                                        </div>
                                     ) : (
-                                        <span className="text-[10px] font-mono text-zinc-600 italic">
-                                            {item.status === "Pending" ? "Waiting for execution..." : 
-                                             item.status === "Processing" ? "AI is reading document..." : "No data extracted."}
+                                        <span className="text-[10px] font-mono text-zinc-600 italic flex items-center justify-center py-4">
+                                            {item.status === "Pending" ? "Waiting in queue..." : 
+                                             item.status === "Processing" ? "Model is extracting data..." : "No data extracted."}
                                         </span>
                                     )}
                                 </div>
