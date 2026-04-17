@@ -18,13 +18,8 @@ import { useLocalAI } from "react-brai";
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import * as pdfjsLib from 'pdfjs-dist/build/pdf';
 
-// Initialize the PDF.js Web Worker from the Unpkg CDN 
-// (We use .mjs because modern pdfjs-dist versions require ES modules)
-if (typeof window !== "undefined") {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
-}
+
 import remarkGfm from 'remark-gfm';
 import ZincTooltip from "./ZincToolTip";
 import { BraiLogo } from "./braiLogo";
@@ -459,27 +454,34 @@ ${JSON.stringify(resumeSchema, null, 2)}`
         }
 
         // If it's a PDF, run it through pdf.js
+        // If it's a PDF, run it through pdf.js dynamically
         if (file.type === "application/pdf") {
             setIsParsingPDF(true);
             try {
-                const fileReader = new FileReader();
-                fileReader.onload = async function() {
-                    const typedarray = new Uint8Array(this.result as ArrayBuffer);
-                    const pdf = await pdfjsLib.getDocument(typedarray).promise;
-                    let fullText = "";
+                // 1. DYNAMICALLY IMPORT THE LIBRARY ONLY WHEN NEEDED (Bypasses SSR)
+                const pdfjsLib = await import('pdfjs-dist/build/pdf');
+                
+                // 2. Set the worker source using the dynamically loaded version
+                pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
-                    for (let i = 1; i <= pdf.numPages; i++) {
-                        const page = await pdf.getPage(i);
-                        const textContent = await page.getTextContent();
-                        const pageText = textContent.items.map((item: any) => item.str).join(" ");
-                        fullText += pageText + "\n";
-                    }
-                    setInput(fullText);
-                };
-                fileReader.readAsArrayBuffer(file);
+                // 3. Proceed with normal extraction
+                const arrayBuffer = await file.arrayBuffer(); // Use arrayBuffer() for modern JS
+                const typedarray = new Uint8Array(arrayBuffer);
+                const pdf = await pdfjsLib.getDocument(typedarray).promise;
+                let fullText = "";
+
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    const pageText = textContent.items.map((item: any) => item.str).join(" ");
+                    fullText += pageText + "\n";
+                }
+                
+                setInput(fullText); // Or push to queue if you are in the Bulk App
+                
             } catch (error) {
                 console.error("Error parsing PDF:", error);
-                setInput("Error parsing PDF. Please try a different file or paste text directly.");
+                setInput("Error parsing PDF. Please try a different file.");
             } finally {
                 setIsParsingPDF(false);
             }
@@ -1101,30 +1103,38 @@ const BulkResumeApp = ({ chat, isLoading, streamBuffer }: any) => {
         const newItems: any[] = [];
 
         for (const file of files) {
-            let fullText = "";
+            let extractedText = "";
             try {
                 if (file.type === "text/plain" || file.name.endsWith(".md")) {
-                    fullText = await file.text();
+                    extractedText = await file.text();
                 } else if (file.type === "application/pdf") {
+                    
+                    // 1. Dynamically import PDF.js ONLY when a PDF is detected
+                    const pdfjsLib = await import('pdfjs-dist/build/pdf');
+                    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+
                     const arrayBuffer = await file.arrayBuffer();
                     const typedarray = new Uint8Array(arrayBuffer);
                     const pdf = await pdfjsLib.getDocument(typedarray).promise;
-                    
+
+                    // Extract text from all pages
                     for (let i = 1; i <= pdf.numPages; i++) {
                         const page = await pdf.getPage(i);
                         const textContent = await page.getTextContent();
                         const pageText = textContent.items.map((item: any) => item.str).join(" ");
-                        fullText += pageText + "\n";
+                        extractedText += pageText + "\n";
                     }
                 }
                 
+                // Add the successfully extracted text to the queue
                 newItems.push({
-                    id: Date.now() + Math.random(), // unique ID
+                    id: Date.now() + Math.random(),
                     filename: file.name,
-                    rawText: fullText,
-                    status: fullText ? "Pending" : "Extraction Failed",
+                    rawText: extractedText,
+                    status: extractedText ? "Pending" : "Extraction Failed",
                     data: null
                 });
+                
             } catch (err) {
                 console.error(`Failed to read file ${file.name}`, err);
                 newItems.push({
@@ -1139,8 +1149,7 @@ const BulkResumeApp = ({ chat, isLoading, streamBuffer }: any) => {
 
         setQueue(prev => [...prev, ...newItems]);
         setIsExtractingText(false);
-        // Reset file input
-        e.target.value = '';
+        e.target.value = ''; // Reset the input
     };
 
     const startBulkProcess = async () => {
