@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Omni-Agent",
+  "version": "1.0",
+  "description": "Local WebGPU AI Co-Pilot",
+  "permissions": [
+    "sidePanel",
+    "activeTab",
+    "scripting"
+  ],
+  "side_panel": {
+    "default_path": "index.html"
+  },
+  "action": {
+    "default_title": "Open Omni-Agent"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+  }
+}
