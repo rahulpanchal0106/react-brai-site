@@ -7,12 +7,24 @@ import {
     Trash2, Box, BrainCircuit, Sparkles, Zap, ChevronRight, Activity,
     RotateCcw, ListOrdered, Share2, Server, Clock,
     Search, PanelLeftClose, PanelLeftOpen, Maximize2, Minimize2, EyeOff, Eye,
-    File
+    File,
+    Briefcase,
+    FileText,
+    UploadCloud,
+    X,
+    Files
 } from "lucide-react";
 import { useLocalAI } from "react-brai";
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import * as pdfjsLib from 'pdfjs-dist/build/pdf';
+
+// Initialize the PDF.js Web Worker from the Unpkg CDN 
+// (We use .mjs because modern pdfjs-dist versions require ES modules)
+if (typeof window !== "undefined") {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+}
 import remarkGfm from 'remark-gfm';
 import ZincTooltip from "./ZincToolTip";
 import { BraiLogo } from "./braiLogo";
@@ -375,6 +387,253 @@ const BulkApp = ({ chat, isLoading, streamBuffer }: any) => {
         </div>
     );
 };
+
+// ============================================================================
+// SUB-APP: ATS RESUME PARSER 
+// ============================================================================
+const ResumeApp = ({ chat, isLoading, streamBuffer }: any) => {
+    const [input, setInput] = useState("");
+    const [output, setOutput] = useState("");
+    const [fileName, setFileName] = useState("");
+    const [isParsingPDF, setIsParsingPDF] = useState(false);
+
+    // UI STATE
+    const [showSchema, setShowSchema] = useState(true);
+    const [isOutputExpanded, setIsOutputExpanded] = useState(false);
+
+   const resumeSchema = {
+    "name": "[Candidate Full Name]",
+    "email": "[Email Address]",
+    "phone": "[Phone Number]",
+    "skills": ["[Skill 1]", "[Skill 2]"],
+    "education": [
+        { 
+            "degree": "[Degree or Certificate Name]", 
+            "year": "[Graduation Year]" 
+        }
+    ],
+    "experience": [
+        { 
+            "company": "[Company Name]", 
+            "years": "[Duration, e.g., 2020-2022]" 
+        }
+    ]
+};
+
+    // 2. Bulletproof prompt engineering
+ const handleExtract = async () => {
+    if (isLoading) return;
+    setOutput("");
+    
+    await chat([
+        { 
+            role: "system", 
+            content: `Extract the resume data into the provided JSON schema. 
+Replace the bracketed instructions (e.g., "[Candidate Full Name]") with the actual data from the resume. 
+If a piece of information is not mentioned in the resume, output an empty string "".
+Output ONLY valid JSON.
+
+Schema: 
+${JSON.stringify(resumeSchema, null, 2)}` 
+        },
+        { role: "user", content: `Resume:\n${input}` }
+    ]);
+};
+    
+    useEffect(() => { 
+        if (isLoading && streamBuffer) setOutput(streamBuffer); 
+    }, [streamBuffer, isLoading]);
+
+    // PDF EXTRACTION LOGIC
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setFileName(file.name);
+        
+        // If it's just a text file, read it directly
+        if (file.type === "text/plain" || file.name.endsWith(".md")) {
+            const text = await file.text();
+            setInput(text);
+            return;
+        }
+
+        // If it's a PDF, run it through pdf.js
+        if (file.type === "application/pdf") {
+            setIsParsingPDF(true);
+            try {
+                const fileReader = new FileReader();
+                fileReader.onload = async function() {
+                    const typedarray = new Uint8Array(this.result as ArrayBuffer);
+                    const pdf = await pdfjsLib.getDocument(typedarray).promise;
+                    let fullText = "";
+
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const textContent = await page.getTextContent();
+                        const pageText = textContent.items.map((item: any) => item.str).join(" ");
+                        fullText += pageText + "\n";
+                    }
+                    setInput(fullText);
+                };
+                fileReader.readAsArrayBuffer(file);
+            } catch (error) {
+                console.error("Error parsing PDF:", error);
+                setInput("Error parsing PDF. Please try a different file or paste text directly.");
+            } finally {
+                setIsParsingPDF(false);
+            }
+        }
+    };
+
+    // --- NEW: Reset Function ---
+    const handleClearFile = () => {
+        setInput("");
+        setFileName("");
+        setOutput(""); // Optional: clear output when loading a new file
+    };
+
+  
+
+    return (
+        <div className="p-6 h-full flex flex-col bg-[#050505]">
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                    <h3 className="text-white font-bold flex items-center gap-2">
+                        <Briefcase className="w-5 h-5 text-indigo-500" />
+                        Zero-Cost ATS: Resume Parser
+                    </h3>
+                    
+                    {!showSchema && (
+                        <button 
+                            onClick={() => setShowSchema(true)} 
+                            className="text-xs font-mono flex items-center gap-1.5 px-2 py-1 rounded-md bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors"
+                        >
+                            <Eye className="w-3 h-3" /> Show Schema
+                        </button>
+                    )}
+                </div>
+
+                {isLoading && (
+                    <span className="text-xs font-mono text-indigo-400 animate-pulse bg-indigo-500/10 px-2 py-1 rounded border border-indigo-500/20">
+                        Extracting Candidate Profile...
+                    </span>
+                )}
+            </div>
+            
+            <div className="flex-1 flex flex-col lg:flex-row gap-4 h-full min-h-0">
+                <div className={`flex flex-col  ${isOutputExpanded ? 'lg:w-[30%]' : 'lg:w-[60%]'}`}>
+                    
+                    {/* SCHEMA AREA */}
+                    {showSchema && (
+                        <div className={`flex flex-col gap-2 h-1/2 transition-all duration-500 ease-in-out `}>
+                            <div className="flex items-center justify-between">
+                                <label className="text-[10px] uppercase tracking-wider text-zinc-500 font-bold flex items-center gap-2">
+                                    <Database className="w-3 h-3" /> Target Schema Profile
+                                </label>
+                                <button 
+                                    onClick={() => setShowSchema(false)} 
+                                    className="text-zinc-600 hover:text-red-400 transition-colors"
+                                    title="Hide Schema Column"
+                                >
+                                    <EyeOff className="w-3.5 h-3.5" />
+                                </button>
+                            </div>
+                            <div className="flex-1 bg-[#0a0a0a] border border-zinc-800 rounded-lg p-4 font-mono text-[11px] text-zinc-400 overflow-auto scrollbar-thin scrollbar-thumb-zinc-800">
+                                <pre>{JSON.stringify(resumeSchema, null, 2)}</pre>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* INPUT AREA (DRAG AND DROP) */}
+                    <div className={`flex flex-col gap-2 transition-all duration-500 ease-in-out ${showSchema?'h-1/2':'h-full'} w-full `}>
+                        <label className="text-[10px] uppercase tracking-wider text-zinc-500 font-bold flex items-center justify-between h-4">
+                            <div className="flex items-center gap-2">
+                                <FileText className="w-3 h-3" /> Input Source
+                            </div>
+                            {fileName && (
+                                <div className="flex items-center gap-2">
+                                    <span className="text-indigo-400 lowercase normal-case truncate max-w-[150px]">{fileName}</span>
+                                    {/* --- NEW: Clear Button --- */}
+                                    <button 
+                                        onClick={handleClearFile}
+                                        className="bg-zinc-800 hover:bg-red-500/20 text-zinc-400 hover:text-red-400 p-0.5 rounded transition-colors"
+                                        title="Clear File"
+                                    >
+                                        <X className="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
+                            )}
+                        </label>
+                        
+                        {input ? (
+                             <textarea 
+                                value={input} 
+                                onChange={(e) => setInput(e.target.value)} 
+                                className="flex-1 bg-zinc-900/30 border border-zinc-800 rounded-lg p-4 text-sm text-zinc-300 focus:outline-none focus:border-zinc-700 resize-none scrollbar-thin scrollbar-thumb-zinc-800 leading-relaxed" 
+                            />
+                        ) : (
+                            <div className="flex-1 border-2 border-dashed border-zinc-800 rounded-lg bg-zinc-900/20 hover:bg-zinc-900/40 transition-colors flex flex-col items-center justify-center relative group">
+                                <input 
+                                    type="file" 
+                                    accept=".pdf,.txt,.md"
+                                    onChange={handleFileUpload}
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                />
+                                {isParsingPDF ? (
+                                    <div className="flex flex-col items-center gap-3">
+                                        <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+                                        <p className="text-sm font-bold text-zinc-300 font-mono">Parsing Document...</p>
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center gap-3 text-center p-6">
+                                        <div className="p-4 bg-zinc-950 rounded-full border border-zinc-800 group-hover:border-indigo-500/50 transition-colors">
+                                            <UploadCloud className="w-8 h-8 text-zinc-500 group-hover:text-indigo-400 transition-colors" />
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-bold text-zinc-300 mb-1">Click or drag resume here</p>
+                                            <p className="text-xs text-zinc-500">Supports PDF, TXT, and MD</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* OUTPUT AREA */}
+                <div className={`flex flex-col gap-2 transition-all duration-500 ease-in-out ${isOutputExpanded ? 'flex-1' : (showSchema ? 'lg:w-[35%]' : 'lg:w-[50%]')}`}>
+                    <div className="flex items-center justify-between">
+                        <label className="text-[10px] uppercase tracking-wider text-indigo-500/70 font-bold flex items-center gap-2">
+                            <CheckCircle2 className="w-3 h-3" /> Candidate JSON Profile
+                        </label>
+                        <button 
+                            onClick={() => setIsOutputExpanded(!isOutputExpanded)} 
+                            className="text-indigo-700 hover:text-indigo-400 transition-colors bg-indigo-900/20 p-1 rounded"
+                            title={isOutputExpanded ? "Shrink Output Panel" : "Maximize Output Panel"}
+                        >
+                            {isOutputExpanded ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
+                        </button>
+                    </div>
+                    <div className="flex-1 bg-[#050715] border border-indigo-900/30 rounded-lg p-4 font-mono text-sm text-indigo-400 overflow-auto relative shadow-[inset_0_0_20px_rgba(99,102,241,0.02)] scrollbar-thin scrollbar-thumb-indigo-900/50">
+                        <pre className="whitespace-pre-wrap">{output || "// Awaiting resume parsing..."}</pre>
+                    </div>
+                </div>
+            </div>
+
+            <div className="mt-6 flex justify-end">
+                <button 
+                    onClick={handleExtract} 
+                    disabled={isLoading || !input.trim()} 
+                    className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-8 py-3 rounded-lg font-bold text-sm transition-all shadow-lg shadow-indigo-500/20 hover:scale-[1.02]"
+                >
+                    {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4 fill-current" />} 
+                    Parse Candidate
+                </button>
+            </div>
+        </div>
+    );
+};
 // ============================================================================
 // 1. HELPER COMPONENTS
 // ============================================================================
@@ -480,7 +739,9 @@ const DEMO_APPS = [
     { id: "chat", name: "Chat", icon: MessageSquare },
     { id: "json", name: "JSON Refinery", icon: FileJson },
     { id: "redact", name: "PII Redactor", icon: Eraser },
+    { id: "resume", name: "ATS Resume Parser", icon: Briefcase },
     { id: "bulkapp", name: "Bulk Customer Support Analyzer", icon: File },
+    { id: "bulkresume", name: "Bulk ATS Processor", icon: Files },
 ];
 
 // ============================================================================
@@ -753,7 +1014,9 @@ export default function Playground() {
 
                             {bootState === "WORKSPACE" && (
                                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 z-30 bg-[#050505] overflow-hidden">
+                                    {activeApp === "bulkresume" && <BulkResumeApp chat={chat} isLoading={isLoading} streamBuffer={response} />}
                                     {activeApp === "chat" && <ChatApp chat={chat} isLoading={isLoading} streamBuffer={response} />}
+                                    {activeApp === "resume" && <ResumeApp chat={chat} isLoading={isLoading} streamBuffer={response} />}
                                     {activeApp === "json" && <JsonApp chat={chat} isLoading={isLoading} streamBuffer={response} />}
                                     {activeApp === "redact" && <RedactApp chat={chat} isLoading={isLoading} streamBuffer={response} />}
                                     {activeApp === "bulkapp" && < BulkApp chat={chat} isLoading={isLoading} streamBuffer={response} />}
@@ -767,6 +1030,347 @@ export default function Playground() {
         </div>
     );
 }
+
+// ============================================================================
+// SUB-APP: BULK ATS RESUME PROCESSOR
+// ============================================================================
+const BulkResumeApp = ({ chat, isLoading, streamBuffer }: any) => {
+    const [queue, setQueue] = useState<any[]>([]);
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [isExtractingText, setIsExtractingText] = useState(false);
+    const [progress, setProgress] = useState({ current: 0, total: 0 });
+    
+    // Persistence & Sorting States
+    const [isMounted, setIsMounted] = useState(false);
+    const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("oldest");
+    const STORAGE_KEY = "react-brai-bulk-resumes";
+
+    const latestResponse = useRef("");
+    useEffect(() => { 
+        if (streamBuffer) latestResponse.current = streamBuffer; 
+    }, [streamBuffer]);
+
+    const isLoadingRef = useRef(isLoading);
+    useEffect(() => {
+        isLoadingRef.current = isLoading;
+    }, [isLoading]);
+
+    useEffect(() => {
+        setIsMounted(true);
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+            try { setQueue(JSON.parse(saved)); } catch (e) { console.error("Failed to parse saved bulk data"); }
+        }
+    }, []);
+
+    useEffect(() => {
+        if (isMounted) {
+            // We omit the raw text from localStorage to save quota, only saving status/data
+            const strippedQueue = queue.map(item => ({ ...item, rawText: "" }));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(strippedQueue));
+        }
+    }, [queue, isMounted]);
+
+   // 1. Clean, empty schema. No instruction text inside the values.
+   const resumeSchema = {
+    "name": "[Candidate Full Name]",
+    "email": "[Email Address]",
+    "phone": "[Phone Number]",
+    "skills": ["[Skill 1]", "[Skill 2]"],
+    "education": [
+        { 
+            "degree": "[Degree or Certificate Name]", 
+            "year": "[Graduation Year]" 
+        }
+    ],
+    "experience": [
+        { 
+            "company": "[Company Name]", 
+            "years": "[Duration, e.g., 2020-2022]" 
+        }
+    ]
+};
+
+
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || []);
+        if (!files.length) return;
+
+        setIsExtractingText(true);
+        const newItems: any[] = [];
+
+        for (const file of files) {
+            let fullText = "";
+            try {
+                if (file.type === "text/plain" || file.name.endsWith(".md")) {
+                    fullText = await file.text();
+                } else if (file.type === "application/pdf") {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const typedarray = new Uint8Array(arrayBuffer);
+                    const pdf = await pdfjsLib.getDocument(typedarray).promise;
+                    
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const textContent = await page.getTextContent();
+                        const pageText = textContent.items.map((item: any) => item.str).join(" ");
+                        fullText += pageText + "\n";
+                    }
+                }
+                
+                newItems.push({
+                    id: Date.now() + Math.random(), // unique ID
+                    filename: file.name,
+                    rawText: fullText,
+                    status: fullText ? "Pending" : "Extraction Failed",
+                    data: null
+                });
+            } catch (err) {
+                console.error(`Failed to read file ${file.name}`, err);
+                newItems.push({
+                    id: Date.now() + Math.random(),
+                    filename: file.name,
+                    rawText: "",
+                    status: "Extraction Failed",
+                    data: null
+                });
+            }
+        }
+
+        setQueue(prev => [...prev, ...newItems]);
+        setIsExtractingText(false);
+        // Reset file input
+        e.target.value = '';
+    };
+
+    const startBulkProcess = async () => {
+        const pendingItems = queue.filter(item => item.status === "Pending" && item.rawText);
+        if (!pendingItems.length || isProcessing) return;
+        
+        setIsProcessing(true);
+        setProgress({ current: 0, total: pendingItems.length });
+
+        for (let i = 0; i < pendingItems.length; i++) {
+            const currentItem = pendingItems[i];
+            
+            // Mark as processing
+            setQueue(prev => prev.map(item => item.id === currentItem.id ? { ...item, status: "Processing" } : item));
+
+            try {
+                latestResponse.current = ""; 
+               await chat([
+    { 
+        role: "system", 
+        content: `Extract the resume data into the exact JSON schema provided. Output ONLY valid JSON. Use null if missing. 
+Schema: ${JSON.stringify(resumeSchema)}` 
+    },
+    { role: "user", content: `Resume:\n${currentItem.rawText}` }
+]); 
+                
+                // ==========================================
+                // THE MACBOOK FIX: TWO-STAGE TRAFFIC LIGHT
+                // ==========================================
+                let spinUpWaits = 0;
+                while (!isLoadingRef.current && spinUpWaits < 100) {
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                    spinUpWaits++;
+                }
+                while (isLoadingRef.current) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+                // ==========================================
+                
+                const rawOutput = latestResponse.current;
+                let parsedJson = null;
+                try {
+                    const startIdx = rawOutput.indexOf('{');
+                    const endIdx = rawOutput.lastIndexOf('}');
+                    if (startIdx !== -1 && endIdx !== -1) {
+                        parsedJson = JSON.parse(rawOutput.substring(startIdx, endIdx + 1));
+                    }
+                } catch (e) {
+                    console.error("JSON parse failed on file", currentItem.filename);
+                }
+
+                setQueue(prev => prev.map(item => 
+                    item.id === currentItem.id ? { 
+                        ...item, 
+                        status: parsedJson ? "Processed" : "AI Failed", 
+                        data: parsedJson 
+                    } : item
+                ));
+                
+            } catch (err) {
+                console.error("Inference failed", err);
+                setQueue(prev => prev.map(item => item.id === currentItem.id ? { ...item, status: "AI Failed" } : item));
+            }
+
+            setProgress(prev => ({ ...prev, current: i + 1 }));
+            await new Promise(resolve => setTimeout(resolve, 100)); // Small breather between files
+        }
+        setIsProcessing(false);
+    };
+
+    const handleClearHistory = () => {
+        localStorage.removeItem(STORAGE_KEY);
+        setQueue([]);
+        setProgress({ current: 0, total: 0 });
+    };
+
+    if (!isMounted) return null;
+
+    const displayedResults = sortOrder === "newest" ? [...queue].reverse() : queue;
+    const pendingCount = queue.filter(q => q.status === "Pending").length;
+
+    return (
+        <div className="p-6 h-full flex flex-col bg-[#050505]">
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-zinc-800 pb-4">
+                <div className="flex items-center gap-3">
+                    <h3 className="text-white font-bold flex items-center gap-2">
+                        <Files className="w-5 h-5 text-indigo-500" />
+                        Bulk ATS Processor
+                    </h3>
+                    <span className="text-[10px] font-mono bg-zinc-900 text-zinc-400 px-2 py-0.5 rounded-full border border-zinc-800">
+                        {queue.length} Resumes
+                    </span>
+                    
+                    {queue.length > 0 && (
+                        <button 
+                            onClick={() => setSortOrder(prev => prev === "newest" ? "oldest" : "newest")}
+                            className="text-[10px] font-mono bg-zinc-900 hover:bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-full border border-zinc-800 transition-colors flex items-center gap-1 cursor-pointer select-none"
+                        >
+                            <ListOrdered className="w-3 h-3" />
+                            {sortOrder === "newest" ? "Newest First" : "Oldest First"}
+                        </button>
+                    )}
+                </div>
+                
+                <div className="flex items-center gap-3">
+                    {queue.length > 0 && !isProcessing && (
+                        <button 
+                            onClick={handleClearHistory} 
+                            className="p-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg border border-red-500/20 transition-colors" 
+                            title="Clear Queue"
+                        >
+                            <Trash2 className="w-4 h-4" />
+                        </button>
+                    )}
+
+                    <label className={`bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 px-4 py-2 rounded-lg text-xs font-bold cursor-pointer transition-colors flex items-center gap-2 ${isProcessing ? 'opacity-50 pointer-events-none' : ''}`}>
+                        {isExtractingText ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
+                        {isExtractingText ? "Extracting..." : "Upload Resumes"}
+                        {/* Notice the 'multiple' attribute here! */}
+                        <input type="file" accept=".pdf,.txt,.md" multiple onChange={handleFileUpload} className="hidden" disabled={isProcessing || isExtractingText} />
+                    </label>
+
+                    <button 
+                        onClick={startBulkProcess}
+                        disabled={isProcessing || pendingCount === 0 || isExtractingText}
+                        className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-6 py-2 rounded-lg font-bold text-xs transition-all shadow-lg shadow-indigo-500/20"
+                    >
+                        {isProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3 fill-current" />}
+                        {isProcessing ? `Parsing ${progress.current}/${progress.total}` : `Start Batch (${pendingCount})`}
+                    </button>
+                </div>
+            </div>
+
+            {isProcessing && (
+                <div className="mb-6 w-full bg-zinc-900 rounded-full h-1.5 border border-zinc-800 overflow-hidden">
+                    <div className="bg-indigo-500 h-1.5 transition-all duration-300" style={{ width: `${(progress.current / progress.total) * 100}%` }}></div>
+                </div>
+            )}
+
+            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-800 pr-2 pb-12">
+                {queue.length === 0 && !isProcessing && !isExtractingText ? (
+                    <div className="h-full flex flex-col items-center justify-center text-sm max-w-2xl mx-auto w-full px-4 text-center">
+                        <div className="p-4 bg-zinc-950 rounded-full border border-zinc-800 mb-4">
+                            <Files className="w-8 h-8 text-zinc-600" />
+                        </div>
+                        <h4 className="text-white font-bold mb-2 text-lg">Drop your resume pile here</h4>
+                        <p className="text-zinc-500 leading-relaxed max-w-md">
+                            Select multiple PDF, TXT, or MD files at once. The engine will extract the raw text locally and queue them up for bulk JSON structuring.
+                        </p>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start">
+                        {displayedResults.map((item) => (
+                            <div key={item.id} className={`bg-zinc-900/40 border rounded-xl p-4 flex flex-col gap-3 relative overflow-hidden 
+                                ${item.status === "Processed" ? "border-indigo-900/50" : 
+                                  item.status === "Processing" ? "border-sky-900/50" :
+                                  item.status.includes("Failed") ? "border-red-900/30" : "border-zinc-800"}`}>
+                                
+                                {item.status === "Processed" && <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500/50"></div>}
+                                {item.status === "Processing" && <div className="absolute top-0 left-0 w-1 h-full bg-sky-500/50 animate-pulse"></div>}
+                                {item.status.includes("Failed") && <div className="absolute top-0 left-0 w-1 h-full bg-red-500/50"></div>}
+                                
+                                <div className="flex justify-between items-start mb-1">
+                                    <span className="text-xs font-mono text-zinc-300 truncate max-w-[180px]" title={item.filename}>
+                                        {item.filename}
+                                    </span>
+                                    
+                                    {item.status === "Processed" && (
+                                        <span className="text-[10px] font-bold text-indigo-400 bg-indigo-400/10 px-2 py-0.5 rounded border border-indigo-400/20 flex items-center gap-1">
+                                            <CheckCircle2 className="w-3 h-3" /> Extracted
+                                        </span>
+                                    )}
+                                    {item.status === "Pending" && (
+                                        <span className="text-[10px] font-bold text-zinc-500 bg-zinc-800 px-2 py-0.5 rounded border border-zinc-700">
+                                            Queued
+                                        </span>
+                                    )}
+                                    {item.status === "Processing" && (
+                                        <span className="text-[10px] font-bold text-sky-400 bg-sky-400/10 px-2 py-0.5 rounded border border-sky-400/20 flex items-center gap-1">
+                                            <Loader2 className="w-3 h-3 animate-spin" /> Parsing...
+                                        </span>
+                                    )}
+                                    {item.status.includes("Failed") && (
+                                        <span className="text-[10px] font-bold text-red-400 bg-red-400/10 px-2 py-0.5 rounded border border-red-400/20 flex items-center gap-1">
+                                            <AlertTriangle className="w-3 h-3" /> {item.status}
+                                        </span>
+                                    )}
+                                </div>
+                                
+                                <div className="mt-auto pt-3 border-t border-zinc-800/50 flex flex-col gap-3">
+                                    {item.data ? (
+                                        <>
+                                            <div className="flex gap-2 flex-wrap">
+                                                <span className="bg-black border border-zinc-800 px-2 py-1 rounded text-[10px] text-zinc-300 font-mono flex items-center gap-1">
+                                                    Name: <span className="text-indigo-400 font-bold truncate max-w-[80px]" title={item.data.name}>{item.data.name || "null"}</span>
+                                                </span>
+                                                <span className="bg-black border border-zinc-800 px-2 py-1 rounded text-[10px] text-zinc-300 font-mono flex items-center gap-1">
+                                                    Skills: <span className="text-emerald-400 font-bold">{item.data.skills?.length || 0}</span>
+                                                </span>
+                                            </div>
+
+                                            <details className="group">
+                                                <summary className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider cursor-pointer hover:text-zinc-300 transition-colors flex items-center gap-1 select-none outline-none list-none [&::-webkit-details-marker]:hidden">
+                                                    <ChevronRight className="w-3 h-3 group-open:rotate-90 transition-transform" />
+                                                    View Full JSON
+                                                </summary>
+                                                <div className="pt-3">
+                                                    <div className="bg-black/80 border border-zinc-800/50 rounded p-3 overflow-auto max-h-[200px] scrollbar-thin scrollbar-thumb-zinc-800">
+                                                        <pre className="text-[10px] text-indigo-300/80 font-mono m-0 leading-relaxed">
+                                                            {JSON.stringify(item.data, null, 2)}
+                                                        </pre>
+                                                    </div>
+                                                </div>
+                                            </details>
+                                        </>
+                                    ) : (
+                                        <span className="text-[10px] font-mono text-zinc-600 italic">
+                                            {item.status === "Pending" ? "Waiting for execution..." : 
+                                             item.status === "Processing" ? "AI is reading document..." : "No data extracted."}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
 
 // ============================================================================
 // SUB-APP: CHAT (Untouched)
