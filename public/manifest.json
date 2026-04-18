@@ -8,8 +8,13 @@
     "activeTab",
     "scripting"
   ],
+  "host_permissions": [
+    "https://huggingface.co/*",
+    "https://cdn-lfs.huggingface.co/*",
+    "https://raw.githubusercontent.com/*"
+  ],
   "side_panel": {
-    "default_path": "index.html"
+    "default_path": "extension.html"
   },
   "action": {
     "default_title": "Open Omni-Agent"
