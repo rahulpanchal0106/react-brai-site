@@ -141,7 +141,7 @@ export default function Hero({ onDocsClick }: { onDocsClick: () => void }) {
                     className="group inline-flex items-center gap-3 px-4 py-1.5 rounded-full border border-zinc-800 bg-zinc-900/80 backdrop-blur-md text-xs font-mono text-zinc-400 mb-6 sm:mb-8 shadow-lg hover:border-zinc-600 hover:text-zinc-200 transition-colors cursor-pointer"
                 >
                     <div className="text-zinc-300 group-hover:scale-110 transition-transform duration-300">
-                        <BraiLogo className="w-5 h-5" color="currentColor" />
+                        <BraiLogo className="w-5 h-5" color="blue" />
                     </div>
                     <span className="flex items-center gap-1.5">
                         <span className="font-bold text-white tracking-tight">react-brai</span>
